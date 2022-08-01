@@ -16,7 +16,7 @@ def pp_width(image, ref=None):
         ref == pp_ref(image)
 
     width = []
-    for row in image:
+    for row in image[0:REF_LB]:
         width.append(_width(row))
 
     return np.max(width)
@@ -130,6 +130,9 @@ if __name__ == "__main__":
     features = ["file", "reference_row", "dl_width", "dl_height"]
 
     refs = [pp_ref(images[49])]*50
+    # pp_width(images[49], refs[49])
+    # exit()
+
     # refs = [pp_ref(i) for i in images]
     w = [pp_width(i, r) for i, r in zip(images, refs)]; print("done w")
     h = [pp_height(i, r) for i, r in zip(images, refs)]; print("done h")
