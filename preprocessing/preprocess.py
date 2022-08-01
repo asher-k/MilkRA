@@ -59,14 +59,12 @@ def _width(row):
     """
     left_size = 0  # non-droplet pixels to the left of the droplet
     right_size = 0  # same as above, but to the right
-    for r in row:
+    for index, r in enumerate(row):
         if r < REF_DROP_PXL and left_size == 0:  # start of the droplet
-            left_size = np.where(row == r)[0]
-            left_size = left_size[0]
+            left_size = index
             continue
         elif r > REF_DROP_PXL and left_size != 0 and right_size == 0:  # end of the droplet
-            right_size = len(row)-np.where(row == r)[0]
-            right_size = right_size[0]
+            right_size = len(row)-index
             break
 
     if left_size == 0 and right_size == 0:  # case for when all white pixels (ie no droplet)
@@ -81,12 +79,12 @@ def pp_ref(image):
     :param image:
     :return: a list of numbers representing the rows of reference within the images
     """
-    ref = len(image) - REF_RADIUS  # TODO: check if r or c
+    ref = REF_LB - REF_RADIUS  # TODO: check if r or c
     reflection = None
     while ref > REF_RADIUS:  # for each row, check widths of lines above & below the current
         pre = [_width(i) for i in image[ref-REF_RADIUS:ref]]
         post = [_width(i) for i in image[ref:ref+REF_RADIUS]]
-        if np.mean(np.subtract(pre, post)) <= REF_THRESH:  # if within threshold, we have our reflection!
+        if np.abs(np.mean(np.subtract(pre, post))) <= REF_THRESH:  # if within threshold, we have our reflection!
             return ref
         ref -= 1
     raise Exception("Unable to find reflection line")
@@ -103,15 +101,20 @@ def to_csv(titles, *data):
     data = [*data]
     assert len(titles) == len(data)
     data = pd.DataFrame(list(zip(*data)), columns=titles)
-    data.to_csv(EXPTPATH+"/data.csv")
+    data.to_csv(EXPTPATH+"/"+EXPTNAME)
     print("EXPORT SUCCESSFUL")
 
 
+# PATH variables
 DATAPATH = "../data/i_sidecam"
 EXPTPATH = "../data/o_features"
-REF_RADIUS = 5  # Radius of the search area when attempting to find the reflection line of an image
+EXPTNAME = "data.csv"
+
+# IMAGE variables
+REF_RADIUS = 10  # Radius of the search area when attempting to find the reflection line of an image
 REF_THRESH = 0.5  # Maximum difference between each side of the radius for a row to be considered reflected
-REF_DROP_PXL = 15  # Maximum value of a BW pixel for it to be considered part of the droplet
+REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of the droplet
+REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
 
 # main script
 if __name__ == "__main__":
@@ -123,9 +126,11 @@ if __name__ == "__main__":
         # cv2.imshow('image', img)
         # cv2.waitKey(0)
 
-    images = images
+    # images = images[0:25]
     features = ["file", "reference_row", "dl_width", "dl_height"]
-    refs = [pp_ref(i) for i in images]
+
+    refs = [pp_ref(images[49])]*50
+    # refs = [pp_ref(i) for i in images]
     w = [pp_width(i, r) for i, r in zip(images, refs)]; print("done w")
     h = [pp_height(i, r) for i, r in zip(images, refs)]; print("done h")
     to_csv(features, files, refs, w, h)
