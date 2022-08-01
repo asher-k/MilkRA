@@ -4,41 +4,6 @@ import cv2
 import os
 
 
-def pp_width(image, ref=None):
-    """
-    Calculates the maximum width of the supplied droplet image.
-    The width is defined as the maximum pixel distance between both sides of the droplet above the reference line.
-    Note the width is not always guaranteed to be at the base of the droplet and fluctuates over its lifespan.
-
-    :return:
-    """
-    if ref is None:
-        ref == pp_ref(image)
-
-    width = []
-    for row in image[0:REF_LB]:
-        width.append(_width(row))
-
-    return np.max(width)
-
-
-def pp_height(image, ref=None):
-    """
-    Calculates the height of the supplied droplet images.
-    The height is defined as the maximum pixel distance between the top of the droplet and the reference line.
-
-    :return:
-    """
-    if ref is None:
-        ref == pp_ref(image)
-
-    heights = []
-    for col in range(0, len(image[0])):
-        heights.append(_height(image, col, ref))
-
-    return np.max(heights)
-
-
 def _height(image, col_index, ref):
     """
     Calculates the height of a column of a droplet image (in pixels)
@@ -70,6 +35,41 @@ def _width(row):
     if left_size == 0 and right_size == 0:  # case for when all white pixels (ie no droplet)
         return 0
     return len(row)-(left_size+right_size)
+
+
+def pp_height(image, ref=None):
+    """
+    Calculates the height of the supplied droplet images.
+    The height is defined as the maximum pixel distance between the top of the droplet and the reference line.
+
+    :return:
+    """
+    if ref is None:
+        ref == pp_ref(image)
+
+    heights = []
+    for col in range(0, len(image[0])):
+        heights.append(_height(image, col, ref))
+
+    return np.max(heights)
+
+
+def pp_width(image, ref=None):
+    """
+    Calculates the maximum width of the supplied droplet image.
+    The width is defined as the maximum pixel distance between both sides of the droplet above the reference line.
+    Note the width is not always guaranteed to be at the base of the droplet and fluctuates over its lifespan.
+
+    :return:
+    """
+    if ref is None:
+        ref == pp_ref(image)
+
+    width = []
+    for row in image[0:REF_LB]:
+        width.append(_width(row))
+
+    return np.max(width)
 
 
 def pp_ref(image):
@@ -130,9 +130,6 @@ if __name__ == "__main__":
     features = ["file", "reference_row", "dl_width", "dl_height"]
 
     refs = [pp_ref(images[49])]*50
-    # pp_width(images[49], refs[49])
-    # exit()
-
     # refs = [pp_ref(i) for i in images]
     w = [pp_width(i, r) for i, r in zip(images, refs)]; print("done w")
     h = [pp_height(i, r) for i, r in zip(images, refs)]; print("done h")
