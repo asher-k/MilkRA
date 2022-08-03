@@ -51,7 +51,7 @@ def pp_height(image, ref=None):
     for col in range(0, len(image[0])):
         heights.append(_height(image, col, ref))
 
-    return np.max(heights)
+    return np.max(heights), np.where(heights == np.max(heights))
 
 
 def pp_width(image, ref=None):
@@ -67,7 +67,8 @@ def pp_width(image, ref=None):
 
     width = []
     for row in image[0:REF_LB]:
-        width.append(_width(row))
+        w = _width(row)
+        width.append(w)
 
     return np.max(width)
 
@@ -90,6 +91,26 @@ def pp_ref(image):
     raise Exception("Unable to find reflection line")
 
 
+def annotate_images(imgs, names, *data):
+    """
+    Draws annotations on images at the reference line and maximum height of the droplet
+    *data should be in order of REF, HEIGHT, HGHT_IND
+
+    :return:
+    """
+    for im, name, d in zip(imgs, names, zip(*data)):
+        im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)  # convert from gs to rgb
+
+        for i in range(0, len(im[d[0]])):
+            im[d[0]][i] = [60, 0, 164]  # highlight reference line in red
+
+        for r in range(d[0], d[0]-d[1], -1):
+            im[r][d[2]] = [164, 0, 60]  # highlight maximum height in blue
+        cv2.imwrite(IMG_EXPTPATH+"/"+name, im)
+
+    print("ANNOTATION SUCCESSFUL")
+
+
 def to_csv(titles, *data):
     """
     Exports the calculated features of droplet image data to a CSV format.
@@ -101,13 +122,14 @@ def to_csv(titles, *data):
     data = [*data]
     assert len(titles) == len(data)
     data = pd.DataFrame(list(zip(*data)), columns=titles)
-    data.to_csv(EXPTPATH+"/"+EXPTNAME)
+    data.to_csv(CSV_EXPTPATH+"/"+EXPTNAME)
     print("EXPORT SUCCESSFUL")
 
 
 # PATH variables
 DATAPATH = "../data/i_sidecam"
-EXPTPATH = "../data/o_features"
+CSV_EXPTPATH = "../data/o_features"
+IMG_EXPTPATH = "../data/o_annotated"
 EXPTNAME = "data.csv"
 
 # IMAGE variables
@@ -126,11 +148,15 @@ if __name__ == "__main__":
         # cv2.imshow('image', img)
         # cv2.waitKey(0)
 
-    # images = images[0:25]
+    # images = images[45:50]
     features = ["file", "reference_row", "dl_width", "dl_height"]
-
     refs = [pp_ref(images[49])]*50
     # refs = [pp_ref(i) for i in images]
+
     w = [pp_width(i, r) for i, r in zip(images, refs)]; print("done w")
     h = [pp_height(i, r) for i, r in zip(images, refs)]; print("done h")
-    to_csv(features, files, refs, w, h)
+    _indicies = [hi[1] for hi in h]  # need to refactor to separate index from height
+    h = [hi[0] for hi in h]
+
+    to_csv(features, files, refs, w, h)  # then start exporting process
+    annotate_images(images, files, refs, h, _indicies)
