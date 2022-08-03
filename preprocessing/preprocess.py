@@ -11,7 +11,7 @@ def _height(image, col_index, ref):
     :return:
     """
     height = 0
-    while image[ref-height][col_index] < REF_DROP_PXL:
+    while image[ref-height][col_index] < REF_DROP_PXL_BORDER:
         height += 1
     return height
 
@@ -45,7 +45,7 @@ def pp_height(image, ref=None):
     :return:
     """
     if ref is None:
-        ref == pp_ref(image)
+        ref == pp_refl(image)
 
     heights = []
     for col in range(0, len(image[0])):
@@ -63,7 +63,7 @@ def pp_width(image, ref=None):
     :return:
     """
     if ref is None:
-        ref == pp_ref(image)
+        ref == pp_refl(image)
 
     width = []
     for row in image[0:REF_LB]:
@@ -73,7 +73,7 @@ def pp_width(image, ref=None):
     return np.max(width)
 
 
-def pp_ref(image):
+def pp_refl(image):
     """
     Calculates the reference line for the droplet image.
     The 'reference line' is defined as where the base of the droplet meets its reflection.
@@ -91,10 +91,27 @@ def pp_ref(image):
     raise Exception("Unable to find reflection line")
 
 
+def pp_midpoint(image, ref):
+    """
+    Calculates the midpoint on the droplet within the image.
+
+    :return:
+    """
+    mp = 0
+    left = 0
+    while mp < len(image[ref]):
+        if image[ref][mp] >= REF_DROP_PXL >= image[ref][mp + 1]:  # found left side of droplet
+            left = mp
+        elif image[ref][mp] <= REF_DROP_PXL <= image[ref][mp + 1]:  # found right side of droplet
+            return (mp-left)//2 + left
+        mp += 1
+    return mp
+
+
 def annotate_images(imgs, names, *data):
     """
     Draws annotations on images at the reference line and maximum height of the droplet
-    *data should be in order of REF, HEIGHT, HGHT_IND
+    *data should be in order of REF, HEIGHT, HGHT_IND, MID_HGHT, MIDPOINTs
 
     :return:
     """
@@ -106,6 +123,10 @@ def annotate_images(imgs, names, *data):
 
         for r in range(d[0], d[0]-d[1], -1):
             im[r][d[2]] = [164, 0, 60]  # highlight maximum height in blue
+
+        for r in range(d[0], d[0]-d[3], -1):
+            im[r][d[4]] = [0, 164, 60]  # highlight middle height in blue
+
         cv2.imwrite(IMG_EXPTPATH+"/"+name, im)
 
     print("ANNOTATION SUCCESSFUL")
@@ -135,7 +156,8 @@ EXPTNAME = "data.csv"
 # IMAGE variables
 REF_RADIUS = 10  # Radius of the search area when attempting to find the reflection line of an image
 REF_THRESH = 0.5  # Maximum difference between each side of the radius for a row to be considered reflected
-REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of the droplet
+REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of the droplet (when finding reflection)
+REF_DROP_PXL_BORDER = 128  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
 REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
 
 # main script
@@ -149,14 +171,17 @@ if __name__ == "__main__":
         # cv2.waitKey(0)
 
     # images = images[45:50]
-    features = ["file", "reference_row", "dl_width", "dl_height"]
-    refs = [pp_ref(images[49])]*50
+    features = ["file", "reference_row", "dl_width", "dl_height_abs", "dl_midpoint_height"]
+    refls = [pp_refl(images[49])] * 50
+    midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
     # refs = [pp_ref(i) for i in images]
 
-    w = [pp_width(i, r) for i, r in zip(images, refs)]; print("done w")
-    h = [pp_height(i, r) for i, r in zip(images, refs)]; print("done h")
+    w = [pp_width(i, r) for i, r in zip(images, refls)]; print("done w")
+    h = [pp_height(i, r) for i, r in zip(images, refls)]; print("done h")
     _indicies = [hi[1] for hi in h]  # need to refactor to separate index from height
     h = [hi[0] for hi in h]
 
-    to_csv(features, files, refs, w, h)  # then start exporting process
-    annotate_images(images, files, refs, h, _indicies)
+    mid_h = [_height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
+
+    to_csv(features, files, refls, w, h, mid_h)  # then start exporting process
+    annotate_images(images, files, refls, h, _indicies, mid_h, [midpoint]*len(images))
