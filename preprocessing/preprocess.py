@@ -81,10 +81,10 @@ def pp_refl(image):
     :return: a list of numbers representing the rows of reference within the images
     """
     ref = REF_LB - REF_RADIUS  # TODO: check if r or c
-    reflection = None
     while ref > REF_RADIUS:  # for each row, check widths of lines above & below the current
         pre = [_width(i) for i in image[ref-REF_RADIUS:ref]]
         post = [_width(i) for i in image[ref:ref+REF_RADIUS]]
+        # print("Found at ", ref, ": ", np.mean(np.subtract(pre, post)))
         if np.abs(np.mean(np.subtract(pre, post))) <= REF_THRESH:  # if within threshold, we have our reflection!
             return ref
         ref -= 1
@@ -108,14 +108,14 @@ def pp_midpoint(image, ref):
     return mp
 
 
-def annotate_images(imgs, names, *data):
+def annotate_images(imgs, fpath, fnames, *data):
     """
     Draws annotations on images at the reference line and maximum height of the droplet
     *data should be in order of REF, HEIGHT, HGHT_IND, MID_HGHT, MIDPOINTs
 
     :return:
     """
-    for im, name, d in zip(imgs, names, zip(*data)):
+    for im, name, d in zip(imgs, fnames, zip(*data)):
         im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)  # convert from gs to rgb
 
         for i in range(0, len(im[d[0]])):
@@ -127,35 +127,33 @@ def annotate_images(imgs, names, *data):
         for r in range(d[0], d[0]-d[3], -1):
             im[r][d[4]] = [0, 164, 60]  # highlight middle height in blue
 
-        cv2.imwrite(IMG_EXPTPATH+"/"+name, im)
+        cv2.imwrite(fpath+"/"+name, im)
 
     print("ANNOTATION SUCCESSFUL")
 
 
-def to_csv(titles, *data):
+def to_csv(titles, fpath, fname, *data):
     """
     Exports the calculated features of droplet image data to a CSV format.
 
-    :param titles:
-    :param data:
     :return:
     """
     data = [*data]
     assert len(titles) == len(data)
     data = pd.DataFrame(list(zip(*data)), columns=titles)
-    data.to_csv(CSV_EXPTPATH+"/"+EXPTNAME)
+    data.to_csv(fpath+"/"+fname)
     print("EXPORT SUCCESSFUL")
 
 
 # PATH variables
-DATAPATH = "../data/i_sidecam"
+DATAPATH = "../data/i_sidecam1"
 CSV_EXPTPATH = "../data/o_features"
-IMG_EXPTPATH = "../data/o_annotated"
+IMG_EXPTPATH = "../data/o_annotated1"
 EXPTNAME = "data.csv"
 
 # IMAGE variables
 REF_RADIUS = 10  # Radius of the search area when attempting to find the reflection line of an image
-REF_THRESH = 0.5  # Maximum difference between each side of the radius for a row to be considered reflected
+REF_THRESH = 2.0  # Maximum difference between each side of the radius for a row to be considered reflected
 REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of the droplet (when finding reflection)
 REF_DROP_PXL_BORDER = 128  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
 REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
@@ -170,9 +168,9 @@ if __name__ == "__main__":
         # cv2.imshow('image', img)
         # cv2.waitKey(0)
 
-    # images = images[45:50]
+    # images = images[60:61]
     features = ["file", "reference_row", "dl_width", "dl_height_abs", "dl_midpoint_height"]
-    refls = [pp_refl(images[49])] * 50
+    refls = [pp_refl(images[len(images)-1])] * (len(images))
     midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
     # refs = [pp_ref(i) for i in images]
 
@@ -183,5 +181,5 @@ if __name__ == "__main__":
 
     mid_h = [_height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
 
-    to_csv(features, files, refls, w, h, mid_h)  # then start exporting process
-    annotate_images(images, files, refls, h, _indicies, mid_h, [midpoint]*len(images))
+    to_csv(features, CSV_EXPTPATH, EXPTNAME, files, refls, w, h, mid_h)  # then start exporting process
+    annotate_images(images, IMG_EXPTPATH, files, refls, h, _indicies, mid_h, [midpoint]*len(images))
