@@ -12,9 +12,9 @@ def define_arguments():
     """
     a = ArgumentParser()
     a.add_argument('--mode', default='single', type=str, help='Mode of the script; one of \'single\' or \'multi\'')
-    a.add_argument('--datapath', default='../data/raw', type=str, help='Path to the data folder')
-    a.add_argument('--csv_exprpath', default='../data/o_features', type=str, help='Path to export .csv to')
-    a.add_argument('--img_exprpath', default='../data/o_annotations', type=str, help='Path to export .tiff files to')
+    a.add_argument('--datapath', default='../data', type=str, help='Path to the data folder')
+    a.add_argument('--csv_exprpath', default='../output/csv', type=str, help='Path to export .csv to')
+    a.add_argument('--img_exprpath', default='../output/annotations', type=str, help='Path to export .tiff files to')
     a.add_argument('--annotate', default=False, type=bool, help='Export annotated images with reflection & height?')
 
     a.add_argument('--dataset', default=None, type=str, help='Folder to evaluate on (single only)')

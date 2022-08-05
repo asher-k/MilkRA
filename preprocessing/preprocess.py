@@ -10,7 +10,7 @@ REF_THRESH = 2.0  # Maximum difference between each side of the radius for a row
 REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of the droplet (when finding reflection)
 REF_DROP_PXL_BORDER = 128  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
 REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
-FEATURES = ["file", "reference_row", "dl_width", "dl_height_abs", "dl_midpoint_height"]  # Named columns in the .csv
+FEATURES = ["file", "reference_row", "dl_width", "dl_height_abs", "dl_height_midpoint"]  # Named .csv columns
 
 
 def _height(image, col_index, ref):
