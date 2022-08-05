@@ -12,5 +12,12 @@ First activate your conda environment using the terminal command `conda activate
 
 | Argument  | Value | Description | 
 | ------------- | ------------- | ------------- |
-| `--mode`  | Content Cell  | hh |
-| `--mode`  | Content Cell  | hh |
+| `--mode`  | <`single` or `multi`> | hh |
+| `--annotate`  |   | hh |
+| `--datapath`  |   | hh |
+| `--csv_exprpath`  |   | hh |
+| `--img_exprpath`  |   | hh |
+| `--dataset`  |   | hh |
+| `--filename`  |   | hh |
+
+The most important argument is `--mode`.
