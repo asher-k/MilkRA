@@ -12,5 +12,5 @@ First activate your conda environment using the terminal command `conda activate
 
 | First Header  | Second Header |
 | ------------- | ------------- |
-| --mode  | Content Cell  |
+| `--mode`  | Content Cell  |
 | Content Cell  | Content Cell  |
