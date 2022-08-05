@@ -4,6 +4,15 @@ import cv2
 import os
 
 
+# IMAGE variables
+REF_RADIUS = 10  # Radius of the search area when attempting to find the reflection line of an image
+REF_THRESH = 2.0  # Maximum difference between each side of the radius for a row to be considered reflected
+REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of the droplet (when finding reflection)
+REF_DROP_PXL_BORDER = 128  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
+REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
+FEATURES = ["file", "reference_row", "dl_width", "dl_height_abs", "dl_midpoint_height"]  # Named columns in the .csv
+
+
 def _height(image, col_index, ref):
     """
     Calculates the height of a column of a droplet image (in pixels)
@@ -145,41 +154,52 @@ def to_csv(titles, fpath, fname, *data):
     print("EXPORT SUCCESSFUL")
 
 
-# PATH variables
-DATAPATH = "../data/i_sidecam1"
-CSV_EXPTPATH = "../data/o_features"
-IMG_EXPTPATH = "../data/o_annotated1"
-EXPTNAME = "data.csv"
+def update_directories(csvpath, imgpath):
+    """
+    Creates export directories if they do not exist
 
-# IMAGE variables
-REF_RADIUS = 10  # Radius of the search area when attempting to find the reflection line of an image
-REF_THRESH = 2.0  # Maximum difference between each side of the radius for a row to be considered reflected
-REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of the droplet (when finding reflection)
-REF_DROP_PXL_BORDER = 128  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
-REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
+    :param csvpath:
+    :param imgpath:
+    :return:
+    """
+    if not os.path.exists(csvpath):
+        os.makedirs(csvpath)
+    if not os.path.exists(imgpath):
+        os.makedirs(imgpath)
 
-# main script
-if __name__ == "__main__":
-    files = os.listdir(DATAPATH)
+
+def run(datapath, dataset, csv_exptpath, img_exptpath, filename, annotate):
+    """
+    Main script (processes a single folder of images to generate CSV & (potentially) annotated files)
+    """
+    combined_path = datapath + "/" + dataset
+    files = os.listdir(combined_path)
+    update_directories(csv_exptpath, img_exptpath)
+
     images = []
     for img in files:
-        img = cv2.imread(DATAPATH+"/"+img, cv2.IMREAD_GRAYSCALE)
+        img = cv2.imread(combined_path + "/" + img, cv2.IMREAD_GRAYSCALE)
         images.append(img)
         # cv2.imshow('image', img)
         # cv2.waitKey(0)
 
-    # images = images[60:61]
-    features = ["file", "reference_row", "dl_width", "dl_height_abs", "dl_midpoint_height"]
-    refls = [pp_refl(images[len(images)-1])] * (len(images))
+    refls = [pp_refl(images[len(images) - 1])] * (len(images))  # assumes static reflection across all images of set
     midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
-    # refs = [pp_ref(i) for i in images]
 
-    w = [pp_width(i, r) for i, r in zip(images, refls)]; print("done w")
-    h = [pp_height(i, r) for i, r in zip(images, refls)]; print("done h")
+    w = [pp_width(i, r) for i, r in zip(images, refls)]
+    h = [pp_height(i, r) for i, r in zip(images, refls)]
     _indicies = [hi[1] for hi in h]  # need to refactor to separate index from height
     h = [hi[0] for hi in h]
 
     mid_h = [_height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
 
-    to_csv(features, CSV_EXPTPATH, EXPTNAME, files, refls, w, h, mid_h)  # then start exporting process
-    annotate_images(images, IMG_EXPTPATH, files, refls, h, _indicies, mid_h, [midpoint]*len(images))
+    to_csv(FEATURES, csv_exptpath, filename, files, refls, w, h, mid_h)  # then start exporting process
+    print("Exported .csv file %s", filename)
+
+    if annotate:
+        if not os.path.exists(img_exptpath + "/" + dataset):
+            os.makedirs(img_exptpath + "/" + dataset)
+        annotate_images(images, img_exptpath + "/" + dataset, files, refls, h, _indicies, mid_h, [midpoint] * len(images))
+        print("Exported annotations")
+
+    print("DONE")
