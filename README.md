@@ -12,12 +12,12 @@ First activate your conda environment using the terminal command `conda activate
 
 | Argument  | Value | Description | 
 | ------------- | ------------- | ------------- |
-| `--mode`  | <`single` or `multi`> | hh |
-| `--annotate`  |   | hh |
-| `--datapath`  |   | hh |
-| `--csv_exprpath`  |   | hh |
-| `--img_exprpath`  |   | hh |
-| `--dataset`  |   | hh |
-| `--filename`  |   | hh |
+| `--mode`  | `single` or `multi` | Mode of the script; under `single` only one provided sub-directory in data is preprocessed. Under `multi` all sub-directories are preprocessed |
+| `--annotate`  |  | hh |
+| `--datapath`  |  | hh |
+| `--csv_exprpath`  |  | hh |
+| `--img_exprpath`  |  | hh |
+| `--dataset`  |  | **Only used in `single`.** |
+| `--filename`  |  | **Only used in `single`.** |
 
 The most important argument is `--mode`.
