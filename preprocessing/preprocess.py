@@ -168,7 +168,7 @@ def update_directories(csvpath, imgpath):
         os.makedirs(imgpath)
 
 
-def run(datapath, dataset, csv_exptpath, img_exptpath, filename, annotate):
+def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
     """
     Main script (processes a single folder of images to generate CSV & (potentially) annotated files)
     """
@@ -193,8 +193,8 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, filename, annotate):
 
     mid_h = [_height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
 
-    to_csv(FEATURES, csv_exptpath, filename, files, refls, w, h, mid_h)  # then start exporting process
-    print("Exported .csv file %s", filename)
+    to_csv(FEATURES, csv_exptpath, dataset+".csv", files, refls, w, h, mid_h)  # then start exporting process
+    print("Exported .csv file %s", dataset+".csv")
 
     if annotate:
         if not os.path.exists(img_exptpath + "/" + dataset):

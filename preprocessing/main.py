@@ -18,7 +18,6 @@ def define_arguments():
     a.add_argument('--annotate', default=False, type=bool, help='Export annotated images with reflection & height?')
 
     a.add_argument('--dataset', default=None, type=str, help='Folder to evaluate on (single only)')
-    a.add_argument('--filename', default='data.csv', type=str, help='Name of the computed data CSV file (single only)')
     a = a.parse_args()
     return a
 
@@ -28,7 +27,7 @@ if __name__ == '__main__':
     args = define_arguments()
 
     if args.mode == 'single':
-        single.run(args.datapath, args.dataset, args.csv_exprpath, args.img_exprpath, args.filename, args.annotate)
+        single.run(args.datapath, args.dataset, args.csv_exprpath, args.img_exprpath, args.annotate)
     elif args.mode == 'multi':
         multi.run(args.datapath, args.csv_exprpath, args.img_exprpath, args.annotate)
     else:
