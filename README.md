@@ -11,13 +11,12 @@ Please note that the input directory `data/` and the output directory `output/` 
 First activate your conda environment using the terminal command `conda activate milkra`. After this, navigate to the directory of the script, `cd path/to/...MilkRA/preprocessing`. To run the script, use the terminal command `python main.py`. There are several command-line arguments available:
 
 | Argument  | Value | Description | 
-| ------------- | ------------- | ------------- |
+| ------------- | ------------- | ---------- |
 | `--mode`  | `single` or `multi` | Mode of the script; under `single` only one provided sub-directory in data is preprocessed. Under `multi` all sub-directories are preprocessed |
 | `--annotate`  |  | hh |
 | `--datapath`  |  | hh |
 | `--csv_exprpath`  |  | hh |
 | `--img_exprpath`  |  | hh |
-| `--dataset`  |  | **Only used in `single`.** |
-| `--filename`  |  | **Only used in `single`.** |
+| `--dataset`  |  | **Only used in `single`.** The subdirectory of `data/` to preprocess. |
 
 The most important argument is `--mode`.
