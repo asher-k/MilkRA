@@ -12,11 +12,11 @@ First activate your conda environment using the terminal command `conda activate
 
 | Argument  | Value | Description | 
 | ------------- | ------------- | ---------- |
-| `--mode`  | `single` or `multi` | Mode of the script; under `single` only one provided sub-directory in data is preprocessed. Under `multi` all sub-directories are preprocessed |
-| `--annotate`  |  | hh |
-| `--datapath`  |  | hh |
-| `--csv_exprpath`  |  | hh |
-| `--img_exprpath`  |  | hh |
-| `--dataset`  |  | **Only used in `single`.** The subdirectory of `data/` to preprocess. |
+| `--mode`  | `single` or `multi` | Mode of the script; under `single` only one provided sub-directory in data is preprocessed. Under `multi` all sub-directories are preprocessed. Default `single`  |
+| `--annotate`  | `True` or `False` | Whether to export annotated versions of droplet images with the reflection line and midpoint height drawn. Default `False`  |
+| `--datapath`  | `<directory>`  | hh |
+| `--csv_exprpath`  | `<directory>` | hh |
+| `--img_exprpath`  | `<directory>` | hh |
+| `--dataset`  | `<folder name>` | **Only required when `--mode = single`.** The subdirectory of `data/` to preprocess. Default `None` |
 
-The most important argument is `--mode`.
+The most important argument is `--mode`, which **must be added as an argument to any script run**. 
