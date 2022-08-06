@@ -12,7 +12,7 @@ First activate your conda environment using the terminal command `conda activate
 
 | Argument  | Value | Description | 
 | ------------- | ------------- | ---------- |
-| `--mode`  | `single` or `multi` | Mode of the script; under `single` only one provided sub-directory in data is preprocessed. Under `multi` all sub-directories are preprocessed. Default `single`  |
+| `--mode`  | `single` or `multi` | Mode of the script; under `single` only one provided sub-directory in `data/` is preprocessed. Under `multi` all sub-directories are preprocessed. Default `single`  |
 | `--annotate`  | `True` or `False` | Whether to export annotated versions of droplet images with the reflection line and midpoint height drawn. Default `False`  |
 | `--datapath`  | `<directory>`  | Relative path to the input directory. Default `../data`  |
 | `--csv_exprpath`  | `<directory>` | Relative path to the output directory for .csv files. Default `../output/csv`  |
