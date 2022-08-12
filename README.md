@@ -8,7 +8,7 @@ Please note that the input directory `data/` and the output directory `output/` 
 
 ### Running the Script
 
-First activate your conda environment using the terminal command `conda activate milkra`. After this, navigate to the directory of the script, `cd path/to/...MilkRA/preprocessing`. To run the script, use the terminal command `python main.py`. There are several command-line arguments available:
+First activate your conda environment using the terminal command `conda activate milkra`. After this, navigate to the directory of the script, `cd path/to/MilkRA/preprocessing`. To run the script, use the terminal command `python main.py`. There are several command-line arguments available:
 
 | Argument  | Value | Description | 
 | ------------- | ------------- | ---------- |
