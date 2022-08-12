@@ -89,6 +89,7 @@ def pp_refl(image):
     :param image:
     :return: a list of numbers representing the rows of reference within the images
     """
+    REF_LB = len(image)
     ref = REF_LB - REF_RADIUS  # TODO: check if r or c
     while ref > REF_RADIUS:  # for each row, check widths of lines above & below the current
         pre = [_width(i) for i in image[ref-REF_RADIUS:ref]]
