@@ -151,9 +151,9 @@ def annotate_images(imgs, fpath, fnames, *data):
         for r in range(d[0], d[0]-d[3], -1):
             im[r][d[4]] = [0, 164, 60]  # highlight middle height in green
 
-        for r in range(d[0]-REF_RADIUS*3, d[0]+REF_RADIUS*3):  # should be total of ~60px high
-            im[r][d[5]] = [242, 202, 142]  # highlight estimated ends of droplet in orange
-            im[r][d[5]+d[6]] = [242, 40, 122]
+        for r in range(d[0]-REF_RADIUS*15, d[0]):  # should be total of ~60px high
+            im[r][d[5]] = [253, 160, 2]  # highlight estimated ends of droplet in orange
+            im[r][d[5]+d[6]] = [253, 160, 2]
 
         cv2.imwrite(fpath+"/"+name, im)
 
@@ -202,20 +202,22 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
     refls = [pp_refl(images[len(images) - 1])] * (len(images))  # assumes static reflection across all images of set
     midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
 
-    w = [pp_width(i, r) for i, r in zip(images, refls)]
-    lefts = [find_left(i[r]) for i, r in zip(images, refls)]
+    # max_w = [pp_width(i, r) for i, r in zip(images, refls)]  # maximum width of the droplet
+    ref_w = [_width(i[r]) for i,r in zip(images, refls)]  # width of the droplet at the found reflection line
+    lefts = [find_left(i[r]) for i, r in zip(images, refls)]  # left side of the droplet (needed to display widths)
+
     h = [pp_height(i, r) for i, r in zip(images, refls)]
     _indicies = [hi[1] for hi in h]  # need to refactor to separate index from height
     h = [hi[0] for hi in h]
 
     mid_h = [_height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
 
-    to_csv(FEATURES, csv_exptpath, dataset+".csv", files, refls, w, h, mid_h)  # then start exporting process
+    to_csv(FEATURES, csv_exptpath, dataset+".csv", files, refls, ref_w, h, mid_h)  # then start exporting process
     print("Exported csv file: ", csv_exptpath+"/"+dataset+".csv")
 
     if annotate:
         if not os.path.exists(img_exptpath + "/" + dataset):
             os.makedirs(img_exptpath + "/" + dataset)
         annotate_images(images, img_exptpath + "/" + dataset, files, refls, h, _indicies, mid_h, [midpoint] * len(images),
-                        lefts, w)
+                        lefts, ref_w)
         print("Exported annotations: ", img_exptpath + "/" + dataset)
