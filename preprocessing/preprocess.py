@@ -9,8 +9,22 @@ REF_RADIUS = 10  # Radius of the search area when attempting to find the reflect
 REF_THRESH = 2.0  # Maximum difference between each side of the radius for a row to be considered reflected
 REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of the droplet (when finding reflection)
 REF_DROP_PXL_BORDER = 152  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
+REF_NONDROP = 225  # Minimum value of a BW pixel for it to be considered not part of the droplet (when finding sides)
 REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
 FEATURES = ["file", "reference_row", "dl_width", "dl_height_abs", "dl_height_midpoint"]  # Named .csv columns
+
+
+def find_left(row):
+    """
+    Finds the leftmost point of the droplet at the current row
+
+    :param row:
+    :return:
+    """
+    for index, r in enumerate(row):
+        if r < REF_NONDROP:
+            return index
+    raise Exception("Unable to find left side of droplet")
 
 
 def _height(image, col_index, ref):
@@ -34,10 +48,10 @@ def _width(row):
     left_size = 0  # non-droplet pixels to the left of the droplet
     right_size = 0  # same as above, but to the right
     for index, r in enumerate(row):
-        if r < REF_DROP_PXL and left_size == 0:  # start of the droplet
+        if r < REF_NONDROP and left_size == 0:  # start of the droplet
             left_size = index
             continue
-        elif r > REF_DROP_PXL and left_size != 0 and right_size == 0:  # end of the droplet
+        elif r > REF_NONDROP and left_size != 0 and right_size == 0:  # end of the droplet
             right_size = len(row)-index
             break
 
@@ -121,7 +135,7 @@ def pp_midpoint(image, ref):
 def annotate_images(imgs, fpath, fnames, *data):
     """
     Draws annotations on images at the reference line and maximum height of the droplet
-    *data should be in order of REF, HEIGHT, HGHT_IND, MID_HGHT, MIDPOINTs
+    *data should be in order of REF, HEIGHT, HGHT_IND, MID_HGHT, MIDPOINTs, LEFTs, WIDTH
 
     :return:
     """
@@ -135,7 +149,11 @@ def annotate_images(imgs, fpath, fnames, *data):
             im[r][d[2]] = [164, 0, 60]  # highlight maximum height in blue
 
         for r in range(d[0], d[0]-d[3], -1):
-            im[r][d[4]] = [0, 164, 60]  # highlight middle height in blue
+            im[r][d[4]] = [0, 164, 60]  # highlight middle height in green
+
+        for r in range(d[0]-REF_RADIUS*3, d[0]+REF_RADIUS*3):  # should be total of ~60px high
+            im[r][d[5]] = [242, 202, 142]  # highlight estimated ends of droplet in orange
+            im[r][d[5]+d[6]] = [242, 40, 122]
 
         cv2.imwrite(fpath+"/"+name, im)
 
@@ -180,11 +198,12 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
         # cv2.imshow('image', img)
         # cv2.waitKey(0)
 
-    print("Preprocessing ", dataset, "...")
+    print("Preprocessing", dataset, "...")
     refls = [pp_refl(images[len(images) - 1])] * (len(images))  # assumes static reflection across all images of set
     midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
 
     w = [pp_width(i, r) for i, r in zip(images, refls)]
+    lefts = [find_left(i[r]) for i, r in zip(images, refls)]
     h = [pp_height(i, r) for i, r in zip(images, refls)]
     _indicies = [hi[1] for hi in h]  # need to refactor to separate index from height
     h = [hi[0] for hi in h]
@@ -197,5 +216,6 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
     if annotate:
         if not os.path.exists(img_exptpath + "/" + dataset):
             os.makedirs(img_exptpath + "/" + dataset)
-        annotate_images(images, img_exptpath + "/" + dataset, files, refls, h, _indicies, mid_h, [midpoint] * len(images))
+        annotate_images(images, img_exptpath + "/" + dataset, files, refls, h, _indicies, mid_h, [midpoint] * len(images),
+                        lefts, w)
         print("Exported annotations: ", img_exptpath + "/" + dataset)
