@@ -11,7 +11,8 @@ REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of
 REF_DROP_PXL_BORDER = 152  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
 REF_NONDROP = 225  # Minimum value of a BW pixel for it to be considered not part of the droplet (when finding sides)
 REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
-FEATURES = ["file", "reference_row", "dl_width", "dl_height_abs", "dl_height_midpoint"]  # Named .csv columns
+FEATURES = ["file", "reflection_row", "dl_reflection_width", "dl_height_midpoint"] \
+           + ["dl_hint_" + str(n) for n in range(0, 10)]  # Named .csv columns
 
 
 def find_left(row):
@@ -135,8 +136,7 @@ def pp_midpoint(image, ref):
 def annotate_images(imgs, fpath, fnames, *data):
     """
     Draws annotations on images at the reference line and maximum height of the droplet
-    *data should be in order of REF, HEIGHT, HGHT_IND, MID_HGHT, MIDPOINTs, LEFTs, WIDTH
-
+    *data should be in order of REF, INTERVAL_HEIGHT, INTERVAL_SIZE, MID_HGHT, MIDPOINTs, LEFTs, WIDTH
     :return:
     """
     for im, name, d in zip(imgs, fnames, zip(*data)):
@@ -145,15 +145,20 @@ def annotate_images(imgs, fpath, fnames, *data):
         for i in range(0, len(im[d[0]])):
             im[d[0]][i] = [60, 0, 164]  # highlight reference line in red
 
-        for r in range(d[0], d[0]-d[1], -1):
-            im[r][d[2]] = [164, 0, 60]  # highlight maximum height in blue
+        for i in range(5, 0, -1):
+            for r in range(d[0], d[0]-d[5+(6-i)], -1):  # highlight intervals in yellow before the midpoint
+                im[r][d[2]-(d[5]*i)] = [255, 255, 0]
 
-        for r in range(d[0], d[0]-d[3], -1):
-            im[r][d[4]] = [0, 164, 60]  # highlight middle height in green
+        for r in range(d[0], d[0]-d[1], -1):
+            im[r][d[2]] = [0, 164, 60]  # highlight middle height in green
+
+        for i in range(1, 6):
+            for r in range(d[0], d[0] - d[10 + i], -1):  # highlight intervals in yellow after the midpoint
+                im[r][d[2] + (d[5] * i)] = [255, 255, 0]
 
         for r in range(d[0]-REF_RADIUS*15, d[0]):  # should be total of ~60px high
-            im[r][d[5]] = [253, 160, 2]  # highlight estimated ends of droplet in orange
-            im[r][d[5]+d[6]] = [253, 160, 2]
+            im[r][d[3]] = [253, 160, 2]  # highlight estimated ends of droplet in orange
+            im[r][d[3]+d[4]] = [253, 160, 2]
 
         cv2.imwrite(fpath+"/"+name, im)
 
@@ -203,21 +208,34 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
     midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
 
     # max_w = [pp_width(i, r) for i, r in zip(images, refls)]  # maximum width of the droplet
+    # h = [pp_height(i, r) for i, r in zip(images, refls)]
+    # _indicies = [hi[1] for hi in h]  # need to refactor to separate index from height
+    # h = [hi[0] for hi in h]
+
     ref_w = [_width(i[r]) for i,r in zip(images, refls)]  # width of the droplet at the found reflection line
     lefts = [find_left(i[r]) for i, r in zip(images, refls)]  # left side of the droplet (needed to display widths)
-
-    h = [pp_height(i, r) for i, r in zip(images, refls)]
-    _indicies = [hi[1] for hi in h]  # need to refactor to separate index from height
-    h = [hi[0] for hi in h]
-
     mid_h = [_height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
 
-    to_csv(FEATURES, csv_exptpath, dataset+".csv", files, refls, ref_w, h, mid_h)  # then start exporting process
+    # Heights at even intervals on each side of the midpoint
+    interval_size = ref_w[0]//12
+    interval_heights = []
+    for i in range(5, 0, -1):  # before the midpoint
+        interval = [_height(im, midpoint-(interval_size*i), r) for im, r in zip(images, refls)]
+        interval_heights.append(interval)
+    for i in range(1, 6):  # after the midpoint
+        interval = [_height(im, midpoint+(interval_size*i), r) for im, r in zip(images, refls)]
+        interval_heights.append(interval)
+
+    to_csv(FEATURES, csv_exptpath, dataset+".csv", files, refls, ref_w, mid_h, interval_heights[0], interval_heights[1],
+           interval_heights[2], interval_heights[3], interval_heights[4], interval_heights[5], interval_heights[6],
+           interval_heights[7], interval_heights[8], interval_heights[9])
     print("Exported csv file: ", csv_exptpath+"/"+dataset+".csv")
 
     if annotate:
         if not os.path.exists(img_exptpath + "/" + dataset):
             os.makedirs(img_exptpath + "/" + dataset)
-        annotate_images(images, img_exptpath + "/" + dataset, files, refls, h, _indicies, mid_h, [midpoint] * len(images),
-                        lefts, ref_w)
+        annotate_images(images, img_exptpath + "/" + dataset, files, refls, mid_h, [midpoint] * len(images), lefts,
+                        ref_w, [interval_size] * len(images), interval_heights[0], interval_heights[1],
+                        interval_heights[2], interval_heights[3], interval_heights[4], interval_heights[5],
+                        interval_heights[6], interval_heights[7], interval_heights[8], interval_heights[9])
         print("Exported annotations: ", img_exptpath + "/" + dataset)

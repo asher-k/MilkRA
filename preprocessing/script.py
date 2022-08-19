@@ -10,7 +10,7 @@ def run(datapath, csv_exptpath, img_exptpath, annotate):
     """
     experiments = os.listdir(datapath)
     pp.update_directories(csv_exptpath, img_exptpath)
-    with IncrementalBar('Processing Imagesets', max=len(experiments)*5) as bar:
+    with IncrementalBar('Processing Imagesets', max=len(experiments) * 7) as bar:
         for ex in experiments:
             print("")  # otherwise next print overlaps
             current = datapath + "/" + ex
@@ -40,15 +40,31 @@ def run(datapath, csv_exptpath, img_exptpath, annotate):
             mid_h = [pp._height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
             bar.next()
 
+            # Heights at even intervals on each side of the midpoint
+            interval_size = ref_w[0] // 12
+            interval_heights = []
+            for i in range(5, 0, -1):  # before the midpoint
+                interval = [pp._height(im, midpoint - (interval_size * i), r) for im, r in zip(images, refls)]
+                interval_heights.append(interval)
+            for i in range(1, 6):  # after the midpoint
+                interval = [pp._height(im, midpoint + (interval_size * i), r) for im, r in zip(images, refls)]
+                interval_heights.append(interval)
+            bar.next()
+
             # And export for this set of images
-            pp.to_csv(pp.FEATURES, csv_exptpath, ex + ".csv", files, refls, ref_w, h, mid_h)  # then start exporting process
+            pp.to_csv(pp.FEATURES, csv_exptpath, ex + ".csv", files, refls, ref_w, mid_h, interval_heights[0],
+                      interval_heights[1], interval_heights[2], interval_heights[3], interval_heights[4],
+                      interval_heights[5], interval_heights[6], interval_heights[7], interval_heights[8],
+                      interval_heights[9])
             print("\nExported csv file: ", csv_exptpath + "/" + ex + ".csv")
 
             if annotate:
                 if not os.path.exists(img_exptpath + "/" + ex):
                     os.makedirs(img_exptpath + "/" + ex)
-                pp.annotate_images(images, img_exptpath + "/" + ex, files, refls, h, _indicies, mid_h,
-                                   [midpoint] * len(images), lefts, ref_w)
+                pp.annotate_images(images, img_exptpath + "/" + ex, files, refls, mid_h, [midpoint] * len(images), lefts
+                                   , ref_w, [interval_size] * len(images), interval_heights[0], interval_heights[1],
+                                   interval_heights[2], interval_heights[3], interval_heights[4], interval_heights[5],
+                                   interval_heights[6], interval_heights[7], interval_heights[8], interval_heights[9])
                 print("Exported annotations: ", img_exptpath + "/" + ex)
 
             bar.next()
