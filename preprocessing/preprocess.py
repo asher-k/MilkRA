@@ -15,13 +15,13 @@ FEATURES = ["file", "reflection_row", "dl_reflection_width", "dl_height_midpoint
            + ["dl_hint_" + str(n) for n in range(0, 10)]  # Named .csv columns
 
 
-def find_left(row):
+def find_left(img, r):
     """
     Finds the leftmost point of the droplet at the current row
 
-    :param row:
     :return:
     """
+    row = img[r]
     for index, r in enumerate(row):
         if r < REF_NONDROP:
             return index
@@ -203,6 +203,7 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
         # cv2.imshow('image', img)
         # cv2.waitKey(0)
 
+    images = images[0:83]  # TODO: Delete this, only enables K
     print("Preprocessing", dataset, "...")
     refls = [pp_refl(images[len(images) - 1])] * (len(images))  # assumes static reflection across all images of set
     midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
@@ -212,8 +213,8 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
     # _indicies = [hi[1] for hi in h]  # need to refactor to separate index from height
     # h = [hi[0] for hi in h]
 
-    ref_w = [_width(i[r]) for i,r in zip(images, refls)]  # width of the droplet at the found reflection line
-    lefts = [find_left(i[r]) for i, r in zip(images, refls)]  # left side of the droplet (needed to display widths)
+    ref_w = [_width(i[r]) for i, r in zip(images, refls)]  # width of the droplet at the found reflection line
+    lefts = [find_left(i, r) for i, r in zip(images, refls)]  # left side of the droplet (needed to display widths)
     mid_h = [_height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
 
     # Heights at even intervals on each side of the midpoint

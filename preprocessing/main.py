@@ -19,8 +19,8 @@ def define_arguments():
     a.add_argument('--annotate', default=False, type=bool, help='Export annotated images with reflection & height?')
 
     a.add_argument('--dataset', default=None, type=str, help='Folder to evaluate on (single only)')
-    a.add_argument('--crop', default=False, type=bool, help='Automatically crop each image in the imageset to the '
-                                                            'droplet?')
+    a.add_argument('--crop', default=False, type=bool, help='Automatically crop and/or used cropped versions of imgs?')
+    a.add_argument('--croppath', default='../cropped', type=str, help='Path to the folder containing cropped images')
     a = a.parse_args()
     return a
 
@@ -31,7 +31,9 @@ if __name__ == '__main__':
 
     # First check for crop
     if args.crop:
-        crop_all()
+        crop_all(args.datapath, args.dataset, args.mode == 'single', args.croppath)
+        args.datapath = args.croppath  # Update the directory to that of the cropped images
+
     # Then move onto mode
     if args.mode == 'single':
         single.run(args.datapath, args.dataset, args.csv_exprpath, args.img_exprpath, args.annotate)
