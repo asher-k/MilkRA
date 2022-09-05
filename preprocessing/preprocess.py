@@ -11,6 +11,7 @@ REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of
 REF_DROP_PXL_BORDER = 152  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
 REF_NONDROP = 225  # Minimum value of a BW pixel for it to be considered not part of the droplet (when finding sides)
 REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
+HEIGHT_RADIUS = 10  # Number of columns to each side of a given pixel to average over (enables smoother estimations)
 FEATURES = ["file", "reflection_row", "dl_reflection_width", "dl_height_midpoint"] \
            + ["dl_hint_" + str(n) for n in range(0, 10)]  # Named .csv columns
 
@@ -28,16 +29,19 @@ def find_left(img, r):
     raise Exception("Unable to find left side of droplet")
 
 
-def _height(image, col_index, ref):
+def _height(image, col_index, ref, avg=5):
     """
-    Calculates the height of a column of a droplet image (in pixels)
+    Calculates the height of a column of a droplet image (in pixels) by taking an average of a surrounding radius
 
     :return:
     """
-    height = 0
-    while image[ref-height][col_index] < REF_DROP_PXL_BORDER:
-        height += 1
-    return height
+    heights = []
+    for col_index in range (col_index-avg, col_index+avg+1, 1):
+        height = 0
+        while image[ref-height][col_index] < REF_DROP_PXL_BORDER:
+            height += 1
+        heights.append(height)
+    return int(np.mean(heights))
 
 
 def _width(row):
@@ -203,7 +207,7 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
         # cv2.imshow('image', img)
         # cv2.waitKey(0)
 
-    images = images[0:83]  # TODO: Delete this, only enables K
+    # images = images[0:83]  # TODO: Delete this, only enables K
     print("Preprocessing", dataset, "...")
     refls = [pp_refl(images[len(images) - 1])] * (len(images))  # assumes static reflection across all images of set
     midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
@@ -215,16 +219,16 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
 
     ref_w = [_width(i[r]) for i, r in zip(images, refls)]  # width of the droplet at the found reflection line
     lefts = [find_left(i, r) for i, r in zip(images, refls)]  # left side of the droplet (needed to display widths)
-    mid_h = [_height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
+    mid_h = [_height(i, midpoint, r, HEIGHT_RADIUS) for i, r in zip(images, refls)]  # height @ the midpoint
 
     # Heights at even intervals on each side of the midpoint
     interval_size = ref_w[0]//12
     interval_heights = []
     for i in range(5, 0, -1):  # before the midpoint
-        interval = [_height(im, midpoint-(interval_size*i), r) for im, r in zip(images, refls)]
+        interval = [_height(im, midpoint-(interval_size*i), r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
         interval_heights.append(interval)
     for i in range(1, 6):  # after the midpoint
-        interval = [_height(im, midpoint+(interval_size*i), r) for im, r in zip(images, refls)]
+        interval = [_height(im, midpoint+(interval_size*i), r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
         interval_heights.append(interval)
 
     to_csv(FEATURES, csv_exptpath, dataset+".csv", files, refls, ref_w, mid_h, interval_heights[0], interval_heights[1],

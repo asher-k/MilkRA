@@ -37,17 +37,17 @@ def run(datapath, csv_exptpath, img_exptpath, annotate):
             h = [hi[0] for hi in h]
             bar.next()
 
-            mid_h = [pp._height(i, midpoint, r) for i, r in zip(images, refls)]  # height @ the midpoint
+            mid_h = [pp._height(i, midpoint, r, pp.HEIGHT_RADIUS) for i, r in zip(images, refls)]  # height @ the midpoint
             bar.next()
 
             # Heights at even intervals on each side of the midpoint
             interval_size = ref_w[0] // 12
             interval_heights = []
             for i in range(5, 0, -1):  # before the midpoint
-                interval = [pp._height(im, midpoint - (interval_size * i), r) for im, r in zip(images, refls)]
+                interval = [pp._height(im, midpoint - (interval_size * i), r, pp.HEIGHT_RADIUS) for im, r in zip(images, refls)]
                 interval_heights.append(interval)
             for i in range(1, 6):  # after the midpoint
-                interval = [pp._height(im, midpoint + (interval_size * i), r) for im, r in zip(images, refls)]
+                interval = [pp._height(im, midpoint + (interval_size * i), r, pp.HEIGHT_RADIUS) for im, r in zip(images, refls)]
                 interval_heights.append(interval)
             bar.next()
 

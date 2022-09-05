@@ -10,13 +10,16 @@ Please note that the input directory `data/` and the output directory `output/` 
 
 First activate your conda environment using the terminal command `conda activate milkra`. After this, navigate to the directory of the script, `cd path/to/MilkRA/preprocessing`. To run the script, use the terminal command `python main.py`. There are several command-line arguments available:
 
-| Argument  | Value | Description | 
-| ------------- | ------------- | ---------- |
-| `--mode`  | `single` or `multi` | Mode of the script; under `single` only one provided sub-directory in `data/` is preprocessed. Under `multi` all sub-directories are preprocessed. Default `single`  |
-| `--annotate`  | `True` or `False` | Whether to export annotated versions of droplet images with the reflection line and midpoint height drawn. Default `False`  |
-| `--datapath`  | `<directory>`  | Relative path to the input directory. Default `../data`  |
-| `--csv_exprpath`  | `<directory>` | Relative path to the output directory for .csv files. Default `../output/csv`  |
-| `--img_exprpath`  | `<directory>` | Relative path to the output directory for annotated image files. Default `../output/annotations`  |
-| `--dataset`  | `<folder name>` | **Required when** `--mode = single`. The subdirectory of `data/` to preprocess. Default `None` |
+| Argument           | Value               | Description                                                                                                                                                                                         |
+|--------------------------|--------------------------|--------------------|
+| `--mode`           | `single` or `multi` | Mode of the script; under `single` only one provided sub-directory in `data/` is preprocessed. Under `multi` all sub-directories are preprocessed. Default `single`                                 |
+| `--annotate`       | `True` or `False`   | Whether to export annotated versions of droplet images with the reflection line and midpoint height drawn. Default `False`                                                                          |
+| `--crop`           | `True` or `False`   | Whether to automatically crop droplet images vertically and save them for future use. If images have already been cropped in a previous execution, their cropped versions are used. Default `False` |
+| `--datapath`       | `<directory>`       | Relative path to the input directory. Default `../data`                                                                                                                                             |
+| `--csv_exprpath`   | `<directory>`       | Relative path to the output directory for .csv files. Default `../output/csv`                                                                                                                       |
+| `--img_exprpath`   | `<directory>`       | Relative path to the output directory for annotated image files. Default `../output/annotations`                                                                                                    |
+| `--croppath`       | `<directory>`       | Relative path where cropped images are saved if cropping is performed. Default `../cropped`                                                                                                         |
+| `--dataset`        | `<folder name>`     | **Required when** `--mode = single`. The subdirectory of `data/` to preprocess. Default `None`                                                                                                      |
+| `--height_radius`  | `<integer>`         | Radius to use when calculating height, enables smoother height estimations. When `0`, only the target column's height is calculated (no smoothing). Default `10`                                    |
 
 The most important argument is `--mode`, which **must be added as an argument to any script run**. Note that in the `single` mode, the `--dataset` argument **must also be provided**. While arguments to alter the directories used for the input and output are provided, these have only undergone superficial testing and may not be 100% functional. To add arguments to a script run, modify the terminal command used to run the python file: `python main.py --mode single --dataset example --annotate True`.
