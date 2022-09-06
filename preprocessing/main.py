@@ -22,6 +22,7 @@ def define_arguments():
     a.add_argument('--crop', default=False, type=bool, help='Automatically crop and/or used cropped versions of imgs?')
     a.add_argument('--croppath', default='../cropped', type=str, help='Path to the folder containing cropped images')
     a.add_argument('--height_radius', default='10', type=int, help='Radius when calculating the height of the droplet')
+    a.add_argument('--height_method', default='top', type=str, help='Method used to calculate height, top or bottom')
     a = a.parse_args()
     return a
 
@@ -38,8 +39,8 @@ if __name__ == '__main__':
 
     # Then move onto mode
     if args.mode == 'single':
-        single.run(args.datapath, args.dataset, args.csv_exprpath, args.img_exprpath, args.annotate)
+        single.run(args.datapath, args.dataset, args.csv_exprpath, args.img_exprpath, args.annotate, args.height_method)
     elif args.mode == 'multi':
-        multi.run(args.datapath, args.csv_exprpath, args.img_exprpath, args.annotate)
+        multi.run(args.datapath, args.csv_exprpath, args.img_exprpath, args.annotate, args.height_method)
     else:
         raise RuntimeError('Unknown script mode: %s, mode should either be \'single\' or \'multi\'' % args.mode)

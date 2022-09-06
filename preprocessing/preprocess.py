@@ -29,9 +29,27 @@ def find_left(img, r):
     raise Exception("Unable to find left side of droplet")
 
 
+def _height_top(image, col_index, ref, avg=5):
+    """
+    Calculates the height of a column of a droplet image (in pixels) by taking an average of a surrounding radius, by
+    measuring from the top of the image down.
+
+    :return:
+    """
+    heights = []
+    for col_index in range (col_index-avg, col_index+avg+1, 1):
+        height = 0
+        while image[height][col_index] > REF_DROP_PXL_BORDER:
+            height += 1
+        height = ref-height
+        heights.append(height)
+    return int(np.mean(heights))
+
+
 def _height(image, col_index, ref, avg=5):
     """
-    Calculates the height of a column of a droplet image (in pixels) by taking an average of a surrounding radius
+    Calculates the height of a column of a droplet image (in pixels) by taking an average of a surrounding radius, by
+    measuring from the bottom of the droplet up.
 
     :return:
     """
@@ -193,10 +211,19 @@ def update_directories(csvpath, imgpath):
         os.makedirs(imgpath)
 
 
-def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
+def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
     """
     Main script (processes a single folder of images to generate CSV & (potentially) annotated files)
     """
+    # Define correct height methodology
+    if height_method == "top":
+        height = _height_top
+    elif height_method == "bottom":
+        height = _height
+    else:
+        raise Exception("Unknown height method, should be either \"top\" or \"bottom\"")
+
+    # Establish path environment
     combined_path = datapath + "/" + dataset
     files = os.listdir(combined_path)
     update_directories(csv_exptpath, img_exptpath)
@@ -219,16 +246,16 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate):
 
     ref_w = [_width(i[r]) for i, r in zip(images, refls)]  # width of the droplet at the found reflection line
     lefts = [find_left(i, r) for i, r in zip(images, refls)]  # left side of the droplet (needed to display widths)
-    mid_h = [_height(i, midpoint, r, HEIGHT_RADIUS) for i, r in zip(images, refls)]  # height @ the midpoint
+    mid_h = [height(i, midpoint, r, HEIGHT_RADIUS) for i, r in zip(images, refls)]  # height @ the midpoint
 
     # Heights at even intervals on each side of the midpoint
     interval_size = ref_w[0]//12
     interval_heights = []
     for i in range(5, 0, -1):  # before the midpoint
-        interval = [_height(im, midpoint-(interval_size*i), r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
+        interval = [height(im, midpoint-(interval_size*i), r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
         interval_heights.append(interval)
     for i in range(1, 6):  # after the midpoint
-        interval = [_height(im, midpoint+(interval_size*i), r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
+        interval = [height(im, midpoint+(interval_size*i), r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
         interval_heights.append(interval)
 
     to_csv(FEATURES, csv_exptpath, dataset+".csv", files, refls, ref_w, mid_h, interval_heights[0], interval_heights[1],
