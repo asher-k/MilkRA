@@ -9,7 +9,7 @@ def _find_crop(img):
     """
     crop_point = None
     for i, row in enumerate(img):  # First find the crop point
-        if row[0] < 248 and crop_point is None:
+        if row[0] < 248 and img[i+50][0] < 248 and img[i+100][0] < 248 and crop_point is None:
             crop_point = i
             break
 

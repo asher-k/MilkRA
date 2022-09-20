@@ -4,7 +4,7 @@ from crop import crop_all
 import preprocess as single
 import script as multi
 
-
+    
 def define_arguments():
     """
     Establishes default model & training/inference parameters.
