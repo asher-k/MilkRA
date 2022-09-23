@@ -21,7 +21,7 @@ def define_arguments():
     a.add_argument('--dataset', default=None, type=str, help='Folder to evaluate on (single only)')
     a.add_argument('--crop', default=False, type=bool, help='Automatically crop and/or used cropped versions of imgs?')
     a.add_argument('--croppath', default='../cropped', type=str, help='Path to the folder containing cropped images')
-    a.add_argument('--height_radius', default='10', type=int, help='Radius when calculating the height of the droplet')
+    a.add_argument('--height_radius', default='2', type=int, help='Radius when calculating the height of the droplet')
     a.add_argument('--height_method', default='top', type=str, help='Method used to calculate height, top or bottom')
     a = a.parse_args()
     return a

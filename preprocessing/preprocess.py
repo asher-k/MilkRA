@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from pair import PointPair
 import cv2
 import os
 
@@ -12,8 +13,7 @@ REF_DROP_PXL_BORDER = 152  # Maximum value of a BW pixel for it to be considered
 REF_NONDROP = 225  # Minimum value of a BW pixel for it to be considered not part of the droplet (when finding sides)
 REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
 HEIGHT_RADIUS = 10  # Number of columns to each side of a given pixel to average over (enables smoother estimations)
-FEATURES = ["file", "reflection_row", "dl_reflection_width", "dl_height_midpoint"] \
-           + ["dl_hint_" + str(n) for n in range(0, 10)]  # Named .csv columns
+FEATURES = ["file", "reflection_row", "dl_reflection_width", "dl_height_midpoint"]  # Named .csv columns (no pairs!!)
 
 
 def find_left(img, r):
@@ -158,40 +158,59 @@ def pp_midpoint(image, ref):
 def annotate_images(imgs, fpath, fnames, *data):
     """
     Draws annotations on images at the reference line and maximum height of the droplet
-    *data should be in order of REF, INTERVAL_HEIGHT, INTERVAL_SIZE, MID_HGHT, MIDPOINTs, LEFTs, WIDTH
     :return:
     """
-    for im, name, d in zip(imgs, fnames, zip(*data)):
+    _ = [*data]
+    _ = _.pop()
+    data = data[:-1]
+    pair_data = []
+    [pair_data.extend([p.l_values, p.r_values, [p.l_index] * len(p.l_values), [p.r_index] * len(p.r_values)])
+     for p in _]
+
+    for im, name, d, p in zip(imgs, fnames, zip(*data), zip(*pair_data)):
         im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)  # convert from gs to rgb
+        ref_line = d[0]
+        midpoint_heights = d[1]
+        midpoint_locations = d[2]
+        lefts = d[3]
+        ref_w = d[4]
 
-        for i in range(0, len(im[d[0]])):
-            im[d[0]][i] = [60, 0, 164]  # highlight reference line in red
+        for i in range(0, len(im[ref_line])):
+            im[ref_line][i] = [60, 0, 164]  # highlight reference line in red
 
-        for i in range(5, 0, -1):
-            for r in range(d[0], d[0]-d[5+(6-i)], -1):  # highlight intervals in yellow before the midpoint
-                im[r][d[2]-(d[5]*i)] = [255, 255, 0]
+        for r in range(ref_line-REF_RADIUS*15, ref_line):  # should be total of ~60px high
+            im[r][lefts] = [253, 160, 2]  # highlight estimated ends of droplet in orange
+            im[r][lefts+ref_w] = [253, 160, 2]
 
-        for r in range(d[0], d[0]-d[1], -1):
-            im[r][d[2]] = [0, 164, 60]  # highlight middle height in green
+        for r in range(ref_line, ref_line-midpoint_heights, -1):
+            im[r][midpoint_locations] = [0, 164, 60]  # highlight middle height in green
 
-        for i in range(1, 6):
-            for r in range(d[0], d[0] - d[10 + i], -1):  # highlight intervals in yellow after the midpoint
-                im[r][d[2] + (d[5] * i)] = [255, 255, 0]
+        # Now we start with the pairs
+        for pi in range(0, len(p)//4):
+            l_val = p[0 + (4*pi)]
+            r_val = p[1 + (4*pi)]
+            l_ind = p[2 + (4*pi)]
+            r_ind = p[3 + (4*pi)]
 
-        for r in range(d[0]-REF_RADIUS*15, d[0]):  # should be total of ~60px high
-            im[r][d[3]] = [253, 160, 2]  # highlight estimated ends of droplet in orange
-            im[r][d[3]+d[4]] = [253, 160, 2]
+            for left in range(ref_line, ref_line - l_val, -1):
+                im[left][l_ind] = [255, 255, 0]
+            for right in range(ref_line, ref_line - r_val, -1):
+                im[right][r_ind] = [255, 255, 0]
 
         cv2.imwrite(fpath+"/"+name, im)
 
 
-def to_csv(titles, fpath, fname, *data):
+def to_csv(titles, fpath, fname, *data, point_mean=False):
     """
     Exports the calculated features of droplet image data to a CSV format.
 
     :return:
     """
     data = [*data]
+    pair_data = data.pop()
+    # Correctly expands value of each PointPair Object
+    [data.extend([p.l_values, p.r_values]) if not point_mean else data.append(p.pair_mean()) for p in pair_data]
+
     assert len(titles) == len(data)
     data = pd.DataFrame(list(zip(*data)), columns=titles)
     data.to_csv(fpath+"/"+fname)
@@ -209,6 +228,40 @@ def update_directories(csvpath, imgpath):
         os.makedirs(csvpath)
     if not os.path.exists(imgpath):
         os.makedirs(imgpath)
+
+
+def construct_pairs(droplet_width, desired_observations, midpoint, padded=True):
+    """
+    Defines and updates all pair objects
+
+    :param droplet_width: Width of the droplet (in pixels)
+    :param desired_observations: Number of heights to draw in the image (/2 for number of pairs)
+    :param midpoint: integer midpoint of the droplet
+    :param padded: True if greater space should be given to edge values; also True if edge values are recorded.
+    :return: 
+    """
+    assert desired_observations % 2 == 0
+
+    pairs = []
+    true_observations = int(desired_observations * 1.2) if padded else desired_observations  # if padded add edge areas
+    interval_size = droplet_width//true_observations
+
+    for i in range(0, desired_observations//2):  # Only take 1/2 observations since we're constructing PAIRs
+        left = midpoint-(droplet_width//2) + ((true_observations-desired_observations)//2) * interval_size + (i*interval_size)
+        right = midpoint+(droplet_width//2) - ((true_observations-desired_observations)//2) * interval_size - (i*interval_size)
+
+        p = PointPair(rname=str(desired_observations//2-i)+"r", lname=str(desired_observations//2-i)+"l",
+                      rind=right, lind=left)
+        pairs.append(p)
+
+    if padded:      # Then add 5 additional pairs at smaller intervals in the padded zone
+        padded_interval_size = (((true_observations-desired_observations)//2) * interval_size) // 7
+        for i in range(0, 5):
+            left = midpoint - (droplet_width // 2) + (i+1) * padded_interval_size
+            right = midpoint + (droplet_width // 2) - (i+1) * padded_interval_size
+            p = PointPair(rname="edge_" + str(5-i) + "_l", lname="edge_" + str(5-i) + "_r", rind=right, lind=left)
+            pairs.append(p)
+    return pairs
 
 
 def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
@@ -231,43 +284,31 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
     for img in files:
         img = cv2.imread(combined_path + "/" + img, cv2.IMREAD_GRAYSCALE)
         images.append(img)
-        # cv2.imshow('image', img)
-        # cv2.waitKey(0)
 
-    # images = images[0:83]  # TODO: Delete this, only enables K
     print("Preprocessing", dataset, "...")
     refls = [pp_refl(images[len(images) - 1])] * (len(images))  # assumes static reflection across all images of set
     midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
-
-    # max_w = [pp_width(i, r) for i, r in zip(images, refls)]  # maximum width of the droplet
-    # h = [pp_height(i, r) for i, r in zip(images, refls)]
-    # _indicies = [hi[1] for hi in h]  # need to refactor to separate index from height
-    # h = [hi[0] for hi in h]
 
     ref_w = [_width(i[r]) for i, r in zip(images, refls)]  # width of the droplet at the found reflection line
     lefts = [find_left(i, r) for i, r in zip(images, refls)]  # left side of the droplet (needed to display widths)
     mid_h = [height(i, midpoint, r, HEIGHT_RADIUS) for i, r in zip(images, refls)]  # height @ the midpoint
 
     # Heights at even intervals on each side of the midpoint
-    interval_size = ref_w[0]//12
-    interval_heights = []
-    for i in range(5, 0, -1):  # before the midpoint
-        interval = [height(im, midpoint-(interval_size*i), r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
-        interval_heights.append(interval)
-    for i in range(1, 6):  # after the midpoint
-        interval = [height(im, midpoint+(interval_size*i), r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
-        interval_heights.append(interval)
+    pairs = construct_pairs(ref_w[0], 20, midpoint, padded=True)
+    for p in pairs:
+        p.l_values = [height(im, p.l_index, r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
+        p.r_values = [height(im, p.r_index, r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
+        FEATURES.extend([p.l_name, p.r_name])
 
-    to_csv(FEATURES, csv_exptpath, dataset+".csv", files, refls, ref_w, mid_h, interval_heights[0], interval_heights[1],
-           interval_heights[2], interval_heights[3], interval_heights[4], interval_heights[5], interval_heights[6],
-           interval_heights[7], interval_heights[8], interval_heights[9])
-    print("Exported csv file: ", csv_exptpath+"/"+dataset+".csv")
+    processed_features = [FEATURES[0]] + [p.merged_title() for p in pairs]  # Features for the PROCESSED (not raw) .csv
+    to_csv(FEATURES, csv_exptpath, dataset+"_raw.csv", files, refls, ref_w, mid_h, pairs)
+    to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, pairs, point_mean=True)
+    print("Exported csvs file: ", csv_exptpath+"/"+dataset)
 
     if annotate:
         if not os.path.exists(img_exptpath + "/" + dataset):
             os.makedirs(img_exptpath + "/" + dataset)
+
         annotate_images(images, img_exptpath + "/" + dataset, files, refls, mid_h, [midpoint] * len(images), lefts,
-                        ref_w, [interval_size] * len(images), interval_heights[0], interval_heights[1],
-                        interval_heights[2], interval_heights[3], interval_heights[4], interval_heights[5],
-                        interval_heights[6], interval_heights[7], interval_heights[8], interval_heights[9])
+                        ref_w, pairs)  # TODO: Integrate Pair behaviour
         print("Exported annotations: ", img_exptpath + "/" + dataset)

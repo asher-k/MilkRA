@@ -20,6 +20,13 @@ First activate your conda environment using the terminal command `conda activate
 | `--img_exprpath`   | `<directory>`       | Relative path to the output directory for annotated image files. Default `../output/annotations`                                                                                                    |
 | `--croppath`       | `<directory>`       | Relative path where cropped images are saved if cropping is performed. Default `../cropped`                                                                                                         |
 | `--dataset`        | `<folder name>`     | **Required when** `--mode = single`. The subdirectory of `data/` to preprocess. Default `None`                                                                                                      |
-| `--height_radius`  | `<integer>`         | Radius to use when calculating height, enables smoother height estimations. When `0`, only the target column's height is calculated (no smoothing). Default `10`                                    |
+| `--height_radius`  | `<integer>`         | Radius to use when calculating height, enables smoother height estimations. When `0`, only the target column's height is calculated (no smoothing). Default `2`                                    |
+| `--height_method`  | `top` or `bottom`   | Method to calculate the height of the droplet, using either a top-down or bottom-up algorithm. Default `top`
+|
 
 The most important argument is `--mode`, which **must be added as an argument to any script run**. Note that in the `single` mode, the `--dataset` argument **must also be provided**. While arguments to alter the directories used for the input and output are provided, these have only undergone superficial testing and may not be 100% functional. To add arguments to a script run, modify the terminal command used to run the python file: `python main.py --mode single --dataset example --annotate True`.
+
+### Recommendations
+To ensure height measurements are correct it is recommended to run the script with `--annotate True` and verify the image files manually.  
+
+In the ideal scenario (no measurement issues which would require a change of parameters & a re-run) an imageset only needs to be run once to obtain the .csv files. However, with `--annotate` and `--crop` the imageset is effectively copied twice in local storage. Therefore after an imageset has been processed without error it is strongly recommended that the `cropped/` and `output/annotations` directories are cleared.
