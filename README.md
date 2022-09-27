@@ -34,3 +34,4 @@ In the ideal scenario (no measurement issues which would require a change of par
 ### Understanding Generated Files
 In every run two outputs are always guaranteed in the form of `csv` files. `<name>_raw.csv` contains raw measurements for each point measured, along with other information about the imageset such as the location of the midpoint and reflection lines. `<name>_preprocessed.csv` only contains pairwise means for each measured pair. For a clearer illustration, see the figure below
 
+![alt text](https://github.com/veryeager/milkra/blob/main/content/README_diagram.jpg?raw=true)
