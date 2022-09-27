@@ -30,3 +30,7 @@ The most important argument is `--mode`, which **must be added as an argument to
 To ensure height measurements are correct it is recommended to run the script with `--annotate True` and verify the annotated image files manually.  
 
 In the ideal scenario (no measurement issues which would require a change of parameters & a re-run) an imageset only needs to be run once to obtain the .csv files. However, with `--annotate` and `--crop` the imageset is effectively copied twice in local storage. Therefore after an imageset has been processed without error it is strongly recommended that the `cropped/` and `output/annotations` directories are cleared.
+
+### Understanding Generated Files
+In every run two outputs are always guaranteed in the form of `csv` files. `<name>_raw.csv` contains raw measurements for each point measured, along with other information about the imageset such as the location of the midpoint and reflection lines. `<name>_preprocessed.csv` only contains pairwise means for each measured pair. For a clearer illustration, see the figure below
+
