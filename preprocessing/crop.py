@@ -28,10 +28,11 @@ def crop_all(datapath, dataset, single=True, crop_dir=None):
     """
     Crops and exports every image of the defined imageset
     """
-    print('Cropping...')
-
     if not os.path.exists(crop_dir):  # make directory if it does not exist
+        print('Cropping images in', datapath)
         os.makedirs(crop_dir)
+    else:
+        print('Found cropped images in', crop_dir)
 
     if single and dataset not in os.listdir(crop_dir):  # Only load if we have yet to crop the image
         point = None

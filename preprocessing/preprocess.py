@@ -127,7 +127,7 @@ def pp_refl(image):
     :return: a list of numbers representing the rows of reference within the images
     """
     REF_LB = len(image)
-    ref = REF_LB - REF_RADIUS  # TODO: check if r or c
+    ref = REF_LB - REF_RADIUS
     while ref > REF_RADIUS:  # for each row, check widths of lines above & below the current
         pre = [_width(i) for i in image[ref-REF_RADIUS:ref]]
         post = [_width(i) for i in image[ref:ref+REF_RADIUS]]
@@ -303,12 +303,12 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
     processed_features = [FEATURES[0]] + [p.merged_title() for p in pairs]  # Features for the PROCESSED (not raw) .csv
     to_csv(FEATURES, csv_exptpath, dataset+"_raw.csv", files, refls, ref_w, mid_h, pairs)
     to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, pairs, point_mean=True)
-    print("Exported csvs file: ", csv_exptpath+"/"+dataset)
+    print("Exported csv files: ", csv_exptpath+"/"+dataset)
 
     if annotate:
         if not os.path.exists(img_exptpath + "/" + dataset):
             os.makedirs(img_exptpath + "/" + dataset)
 
         annotate_images(images, img_exptpath + "/" + dataset, files, refls, mid_h, [midpoint] * len(images), lefts,
-                        ref_w, pairs)  # TODO: Integrate Pair behaviour
+                        ref_w, pairs)
         print("Exported annotations: ", img_exptpath + "/" + dataset)
