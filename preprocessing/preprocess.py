@@ -13,6 +13,8 @@ REF_DROP_PXL_BORDER = 152  # Maximum value of a BW pixel for it to be considered
 REF_NONDROP = 225  # Minimum value of a BW pixel for it to be considered not part of the droplet (when finding sides)
 REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
 HEIGHT_RADIUS = 10  # Number of columns to each side of a given pixel to average over (enables smoother estimations)
+
+NULL_FLAG = False  # Flag if null values were calculated; if true should add print statement
 FEATURES = ["file", "reflection_row", "dl_reflection_width", "dl_height_midpoint"]  # Named .csv columns (no pairs!!)
 
 
@@ -41,6 +43,10 @@ def _height_top(image, col_index, ref, avg=5):
         height = 0
         while image[height][col_index] > REF_DROP_PXL_BORDER:
             height += 1
+            if height >= len(image):  # case for when the measurement is outside the bounds of the droplet (rare)
+                global NULL_FLAG  # Update null flag
+                NULL_FLAG = True
+                return None
         height = ref-height
         heights.append(height)
     return int(np.mean(heights))
@@ -58,6 +64,10 @@ def _height(image, col_index, ref, avg=5):
         height = 0
         while image[ref-height][col_index] < REF_DROP_PXL_BORDER:
             height += 1
+            if height >= len(image):  # case for when the measurement is outside the bounds of the droplet (rare)
+                global NULL_FLAG  # Update null flag
+                NULL_FLAG = True
+                return None
         heights.append(height)
     return int(np.mean(heights))
 
@@ -192,10 +202,12 @@ def annotate_images(imgs, fpath, fnames, *data):
             l_ind = p[2 + (4*pi)]
             r_ind = p[3 + (4*pi)]
 
-            for left in range(ref_line, ref_line - l_val, -1):
-                im[left][l_ind] = [255, 255, 0]
-            for right in range(ref_line, ref_line - r_val, -1):
-                im[right][r_ind] = [255, 255, 0]
+            if l_val is not None:  # When the height values are None just skip
+                for left in range(ref_line, ref_line - l_val, -1):
+                    im[left][l_ind] = [255, 255, 0]
+            if r_val is not None:  # When the height values are None just skip
+                for right in range(ref_line, ref_line - r_val, -1):
+                    im[right][r_ind] = [255, 255, 0]
 
         cv2.imwrite(fpath+"/"+name, im)
 
@@ -238,7 +250,7 @@ def construct_pairs(droplet_width, desired_observations, midpoint, padded=True):
     :param desired_observations: Number of heights to draw in the image (/2 for number of pairs)
     :param midpoint: integer midpoint of the droplet
     :param padded: True if greater space should be given to edge values; also True if edge values are recorded.
-    :return: 
+    :return:
     """
     assert desired_observations % 2 == 0
 
@@ -286,7 +298,7 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
         img = cv2.imread(combined_path + "/" + img, cv2.IMREAD_GRAYSCALE)
         images.append(img)
 
-    print("Preprocessing", dataset, "...")
+    print("Preprocessing", dataset + "...")
     refls = [pp_refl(images[len(images) - 1])] * (len(images))  # assumes static reflection across all images of set
     midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
 
@@ -295,14 +307,15 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
     mid_h = [height(i, midpoint, r, HEIGHT_RADIUS) for i, r in zip(images, refls)]  # height @ the midpoint
 
     # Heights at even intervals on each side of the midpoint
-    pairs = construct_pairs(min(ref_w), 22, midpoint, padded=True)
+    unprocessed_fearures = FEATURES.copy()
+    pairs = construct_pairs(ref_w[-1], 22, midpoint, padded=True)
     for p in pairs:
         p.l_values = [height(im, p.l_index, r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
         p.r_values = [height(im, p.r_index, r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
-        FEATURES.extend([p.l_name, p.r_name])
+        unprocessed_fearures.extend([p.l_name, p.r_name])
 
     processed_features = [FEATURES[0]] + [FEATURES[3]] + [p.merged_title() for p in pairs]  # Feats for the PROCESSED
-    to_csv(FEATURES, csv_exptpath, dataset+"_raw.csv", files, refls, ref_w, mid_h, pairs)
+    to_csv(unprocessed_fearures, csv_exptpath, dataset+"_raw.csv", files, refls, ref_w, mid_h, pairs)
     to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, mid_h, pairs, point_mean=True)
     print("Exported csv files: ", csv_exptpath+"/"+dataset)
 
@@ -313,3 +326,6 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
         annotate_images(images, img_exptpath + "/" + dataset, files, refls, mid_h, [midpoint] * len(images), lefts,
                         ref_w, pairs)
         print("Exported annotations: ", img_exptpath + "/" + dataset)
+
+    if NULL_FLAG:
+        print("\nWarning: Null values were produced for droplet height! Please verify any generated files.\n")

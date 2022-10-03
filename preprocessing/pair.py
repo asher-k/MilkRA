@@ -17,7 +17,7 @@ class PointPair:
 
         :return:
         """
-        return [sum(pair)/2 for pair in zip(self.r_values, self.l_values)]
+        return [sum(pair)/2 if None not in pair else None for pair in zip(self.r_values, self.l_values)]
 
     def merged_title(self):
         """

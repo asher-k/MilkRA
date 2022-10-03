@@ -29,12 +29,10 @@ def crop_all(datapath, dataset, single=True, crop_dir=None):
     Crops and exports every image of the defined imageset
     """
     if not os.path.exists(crop_dir):  # make directory if it does not exist
-        print('Cropping images in', datapath)
         os.makedirs(crop_dir)
-    else:
-        print('Found cropped images in', crop_dir)
 
     if single and dataset not in os.listdir(crop_dir):  # Only load if we have yet to crop the image
+        print('Cropping images in', datapath + "/" + dataset)
         point = None
         for fname in os.listdir(datapath + "/" + dataset):
             img = cv2.imread(datapath + "/" + dataset + "/" + fname, cv2.IMREAD_GRAYSCALE)
@@ -50,6 +48,7 @@ def crop_all(datapath, dataset, single=True, crop_dir=None):
         experiments = os.listdir(datapath)
         for ex in experiments:
             if ex not in os.listdir(crop_dir):  # Only load if we have yet to crop the image
+                print('Cropping images in', datapath + "/" + ex)
                 point = None
                 for fname in os.listdir(datapath + "/" + ex):
                     img = cv2.imread(datapath + "/" + ex + "/" + fname, cv2.IMREAD_GRAYSCALE)
@@ -60,3 +59,8 @@ def crop_all(datapath, dataset, single=True, crop_dir=None):
                     if not os.path.exists(crop_dir + "/" + ex):
                         os.makedirs(crop_dir + "/" + ex)
                     cv2.imwrite(crop_dir + "/" + ex + "/" + fname, img)
+            else:
+                print('Found cropped images in', crop_dir + "/" + ex)
+    else:
+        print('Found cropped images in', crop_dir + "/" + dataset)  # print for existing crops in single-image case
+

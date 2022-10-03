@@ -29,7 +29,7 @@ def run(datapath, csv_exptpath, img_exptpath, annotate, height_method):
                 images.append(img)
 
             # Now begin the preprocessing
-            print(" Preprocessing", ex, "...")
+            print(" Preprocessing", ex + "...")
             refls = [pp.pp_refl(images[len(images) - 1])] * (len(images))
             midpoint = pp.pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
             bar.next()
@@ -43,16 +43,16 @@ def run(datapath, csv_exptpath, img_exptpath, annotate, height_method):
             bar.next()
 
             # Heights at even intervals on each side of the midpoint
-            pairs = pp.construct_pairs(min(ref_w), 22, midpoint, padded=True)
+            pairs = pp.construct_pairs(ref_w[-1], 22, midpoint, padded=True)
+            unprocessed_features = pp.FEATURES.copy()
             for p in pairs:
                 p.l_values = [height(im, p.l_index, r, pp.HEIGHT_RADIUS) for im, r in zip(images, refls)]
                 p.r_values = [height(im, p.r_index, r, pp.HEIGHT_RADIUS) for im, r in zip(images, refls)]
-                pp.FEATURES.extend([p.l_name, p.r_name])
+                unprocessed_features.extend([p.l_name, p.r_name])
 
-            processed_features = [pp.FEATURES[0]] + [p.merged_title() for p in
-                                                     pairs]  # Features for the PROCESSED (not raw) .csv
-            pp.to_csv(pp.FEATURES, csv_exptpath, ex + "_raw.csv", files, refls, ref_w, mid_h, pairs)
-            pp.to_csv(processed_features, csv_exptpath, ex + "_processed.csv", files, pairs, point_mean=True)
+            processed_features = [pp.FEATURES[0]] + [pp.FEATURES[3]] + [p.merged_title() for p in pairs]
+            pp.to_csv(unprocessed_features, csv_exptpath, ex + "_raw.csv", files, refls, ref_w, mid_h, pairs)
+            pp.to_csv(processed_features, csv_exptpath, ex + "_processed.csv", files, mid_h, pairs, point_mean=True)
             print(" Exported csv files: ", csv_exptpath + "/" + ex)
             bar.next()
 
@@ -64,3 +64,6 @@ def run(datapath, csv_exptpath, img_exptpath, annotate, height_method):
                 print(" Exported annotations: ", img_exptpath + "/" + ex)
 
             bar.next()
+
+    if pp.NULL_FLAG:
+        print("\nWarning: Null values were produced for droplet height! Please verify any generated files.\n")
