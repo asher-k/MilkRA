@@ -243,7 +243,7 @@ def construct_pairs(droplet_width, desired_observations, midpoint, padded=True):
     assert desired_observations % 2 == 0
 
     pairs = []
-    true_observations = int(desired_observations * 1.2) if padded else desired_observations  # if padded add edge areas
+    true_observations = int(desired_observations + 2) if padded else desired_observations  # if padded add edge areas
     interval_size = droplet_width//true_observations
 
     for i in range(0, desired_observations//2):  # Only take 1/2 observations since we're constructing PAIRs
@@ -254,12 +254,13 @@ def construct_pairs(droplet_width, desired_observations, midpoint, padded=True):
                       rind=right, lind=left)
         pairs.append(p)
 
-    if padded:      # Then add 5 additional pairs at smaller intervals in the padded zone
-        padded_interval_size = (((true_observations-desired_observations)//2) * interval_size) // 7
-        for i in range(0, 5):
-            left = midpoint - (droplet_width // 2) + (i+1) * padded_interval_size
-            right = midpoint + (droplet_width // 2) - (i+1) * padded_interval_size
-            p = PointPair(rname="edge_" + str(5-i) + "_l", lname="edge_" + str(5-i) + "_r", rind=right, lind=left)
+    if padded:      # Then add 4 additional pairs at smaller intervals in the padded zone
+        padded_interval_size = (((true_observations-desired_observations)//2) * 2 * interval_size) // 6
+        for i in range(0, 4):
+            buffer = 1 if i < 2 else 2
+            left = midpoint - (droplet_width // 2) + (i+buffer) * padded_interval_size
+            right = midpoint + (droplet_width // 2) - (i+buffer) * padded_interval_size
+            p = PointPair(rname="edge_" + str(4-i) + "_l", lname="edge_" + str(4-i) + "_r", rind=right, lind=left)
             pairs.append(p)
     return pairs
 
@@ -294,15 +295,15 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
     mid_h = [height(i, midpoint, r, HEIGHT_RADIUS) for i, r in zip(images, refls)]  # height @ the midpoint
 
     # Heights at even intervals on each side of the midpoint
-    pairs = construct_pairs(ref_w[0], 20, midpoint, padded=True)
+    pairs = construct_pairs(min(ref_w), 22, midpoint, padded=True)
     for p in pairs:
         p.l_values = [height(im, p.l_index, r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
         p.r_values = [height(im, p.r_index, r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
         FEATURES.extend([p.l_name, p.r_name])
 
-    processed_features = [FEATURES[0]] + [p.merged_title() for p in pairs]  # Features for the PROCESSED (not raw) .csv
+    processed_features = [FEATURES[0]] + [[FEATURES[3]]] + [p.merged_title() for p in pairs]  # Feats for the PROCESSED
     to_csv(FEATURES, csv_exptpath, dataset+"_raw.csv", files, refls, ref_w, mid_h, pairs)
-    to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, pairs, point_mean=True)
+    to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, mid_h, pairs, point_mean=True)
     print("Exported csv files: ", csv_exptpath+"/"+dataset)
 
     if annotate:

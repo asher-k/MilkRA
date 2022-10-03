@@ -43,7 +43,7 @@ def run(datapath, csv_exptpath, img_exptpath, annotate, height_method):
             bar.next()
 
             # Heights at even intervals on each side of the midpoint
-            pairs = pp.construct_pairs(ref_w[0], 20, midpoint, padded=True)
+            pairs = pp.construct_pairs(min(ref_w), 22, midpoint, padded=True)
             for p in pairs:
                 p.l_values = [height(im, p.l_index, r, pp.HEIGHT_RADIUS) for im, r in zip(images, refls)]
                 p.r_values = [height(im, p.r_index, r, pp.HEIGHT_RADIUS) for im, r in zip(images, refls)]
