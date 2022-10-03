@@ -301,7 +301,7 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
         p.r_values = [height(im, p.r_index, r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
         FEATURES.extend([p.l_name, p.r_name])
 
-    processed_features = [FEATURES[0]] + [[FEATURES[3]]] + [p.merged_title() for p in pairs]  # Feats for the PROCESSED
+    processed_features = [FEATURES[0]] + [FEATURES[3]] + [p.merged_title() for p in pairs]  # Feats for the PROCESSED
     to_csv(FEATURES, csv_exptpath, dataset+"_raw.csv", files, refls, ref_w, mid_h, pairs)
     to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, mid_h, pairs, point_mean=True)
     print("Exported csv files: ", csv_exptpath+"/"+dataset)
