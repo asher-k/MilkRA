@@ -13,6 +13,7 @@ REF_DROP_PXL_BORDER = 152  # Maximum value of a BW pixel for it to be considered
 REF_NONDROP = 225  # Minimum value of a BW pixel for it to be considered not part of the droplet (when finding sides)
 REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
 HEIGHT_RADIUS = 10  # Number of columns to each side of a given pixel to average over (enables smoother estimations)
+MIN_DROP_WIDTH = 100  # Pixel width of a dark region within an image in order to be considered a droplet (removes false-positives)
 
 NULL_FLAG = False  # Flag if null values were calculated; if true should add print statement
 FEATURES = ["file", "reflection_row", "dl_reflection_width", "dl_height_midpoint"]  # Named .csv columns (no pairs!!)
@@ -27,7 +28,10 @@ def find_left(img, r):
     row = img[r]
     for index, r in enumerate(row):
         if r < REF_NONDROP:
-            return index
+            # Now we check the droplet's width
+            flag = any([row[index + i] >= REF_NONDROP for i in range(0, MIN_DROP_WIDTH, MIN_DROP_WIDTH%10)])
+            if not flag:
+                return index
     raise Exception("Unable to find left side of droplet")
 
 
