@@ -29,7 +29,7 @@ def find_left(img, r):
     for index, r in enumerate(row):
         if r < REF_NONDROP:
             # Now we check the droplet's width
-            flag = any([row[index + i] >= REF_NONDROP for i in range(0, MIN_DROP_WIDTH, MIN_DROP_WIDTH%10)])
+            flag = any([row[index + i] >= REF_NONDROP for i in range(0, MIN_DROP_WIDTH, MIN_DROP_WIDTH//10)])
             if not flag:
                 return index
     raise Exception("Unable to find left side of droplet")
