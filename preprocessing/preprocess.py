@@ -163,7 +163,7 @@ def pp_midpoint(image, ref):
     while mp < len(image[ref]):
         if image[ref][mp] >= REF_DROP_PXL >= image[ref][mp + 1]:  # found left side of droplet
             left = mp
-        elif image[ref][mp] <= REF_DROP_PXL <= image[ref][mp + 1]:  # found right side of droplet
+        elif image[ref][mp] <= REF_DROP_PXL <= image[ref][mp + 1] <= image[ref][mp+50]:  # found right side of droplet
             return (mp-left)//2 + left
         mp += 1
     return mp
@@ -304,7 +304,7 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
 
     print("Preprocessing", dataset + "...")
     refls = [pp_refl(images[len(images) - 1])] * (len(images))  # assumes static reflection across all images of set
-    midpoint = pp_midpoint(images[0], refls[0])  # midpoint should be found when time = 2s
+    midpoint = pp_midpoint(images[3], refls[3])  # midpoint should be found when time = 2s
 
     ref_w = [_width(i[r]) for i, r in zip(images, refls)]  # width of the droplet at the found reflection line
     lefts = [find_left(i, r) for i, r in zip(images, refls)]  # left side of the droplet (needed to display widths)

@@ -1,27 +1,34 @@
 # File contains functions when cropping is enabled in main.py\
 import os
 import cv2
+import preprocess as pp
+import numpy as np
+
+BW_CROP = 230
 
 
 def _find_crop(img):
     """
     Finds the crop point of an image (where the black value along one side rises above a threshold0
     """
-    crop_point = None
-    for i, row in enumerate(img):  # First find the crop point
-        if row[0] < 248 and img[i+50][0] < 248 and img[i+100][0] < 248 and crop_point is None:
-            crop_point = i
+    vertical = None
+    for i, row in enumerate(img):  # First find the vertical crop point
+        if row[0] < BW_CROP and img[i+50][0] < BW_CROP and img[i+100][0] < BW_CROP and vertical is None:
+            vertical = i
             break
 
+    horizontal = pp.find_left(img, vertical) - 100
+
     #  Then return the crop point
-    return crop_point if crop_point is not None else len(img)
+    return vertical if vertical is not None else len(img), horizontal
 
 
-def _crop_at(img, at):
+def _crop_at(img, row, col):
     """
-    Crops the image at a given row
+    Crops the image at a given row/column pair
     """
-    return img[0:at]
+    img = img[0:row]
+    return np.array([i[col:] for i in img])
 
 
 def crop_all(datapath, dataset, single=True, crop_dir=None):
@@ -38,7 +45,7 @@ def crop_all(datapath, dataset, single=True, crop_dir=None):
             img = cv2.imread(datapath + "/" + dataset + "/" + fname, cv2.IMREAD_GRAYSCALE)
             if point is None:
                 point = _find_crop(img)
-            img = _crop_at(img, point)
+            img = _crop_at(img, *point)
 
             if not os.path.exists(crop_dir + "/" + dataset):
                 os.makedirs(crop_dir + "/" + dataset)
@@ -54,7 +61,7 @@ def crop_all(datapath, dataset, single=True, crop_dir=None):
                     img = cv2.imread(datapath + "/" + ex + "/" + fname, cv2.IMREAD_GRAYSCALE)
                     if point is None:
                         point = _find_crop(img)
-                    img = _crop_at(img, point)
+                    img = _crop_at(img, *point)
 
                     if not os.path.exists(crop_dir + "/" + ex):
                         os.makedirs(crop_dir + "/" + ex)
