@@ -24,15 +24,15 @@ First activate your conda environment using the terminal command `conda activate
 | `--height_method`  | `top` or `bottom`   | Method to calculate the height of the droplet, using either a top-down or bottom-up algorithm. Default `top` |
 
 
-The most important argument is `--mode`, which **must be added as an argument to any script run**. Note that in the `single` mode, the `--dataset` argument **must also be provided**. While arguments to alter the directories used for the input and output are provided, these have only undergone superficial testing and may not be 100% functional. To add arguments to a script run, modify the terminal command used to run the python file: `python main.py --mode single --dataset example --annotate True`.
+The most important argument is `--mode`, which **must be added as an argument to any script run**. Note that in the `single` mode, the `--dataset` argument **must also be provided**. To add arguments to a script run, modify the terminal command used to run the python file: `python main.py --mode single --dataset example --annotate`.
 
 ### Recommendations
-To ensure height measurements are correct it is recommended to run the script with `--annotate True` and verify the annotated image files manually.  
+To ensure height measurements are correct it is recommended to run the script with `--annotate` and verify the annotated image files manually.  
 
 In the ideal scenario (no measurement issues which would require a change of parameters & a re-run) an imageset only needs to be run once to obtain the .csv files. However, with `--annotate` and `--crop` the imageset is effectively copied twice in local storage. Therefore after an imageset has been processed without error it is strongly recommended that the `cropped/` and `output/annotations` directories are cleared.
 
 ### Troubleshooting
-Occassionally scripts may produce errors - this is normal and is often the result of artifact(s) to the side of the droplet. Re-running these troublesome imagesets with `--crop True` frequently fixes this issue. Should issues continue to persist, get in touch with Asher (stoutashe@myvuw.ac.nz). Attach the imageset and describe your script settings.
+Occassionally scripts may produce errors - this is normal and is often the result of artifact(s) to the side of the droplet. Re-running these troublesome imagesets with `--crop` frequently fixes this issue. Should issues continue to persist, get in touch with Asher (stoutashe@myvuw.ac.nz). Attach the imageset and describe your script settings.
 
 
 ### Understanding Generated Files

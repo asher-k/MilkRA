@@ -1,172 +1,11 @@
 import pandas as pd
-import numpy as np
+from Image import Droplet, CONSTS
 from pair import PointPair
 import cv2
 import os
 
 
-# IMAGE variables
-REF_RADIUS = 10  # Radius of the search area when attempting to find the reflection line of an image
-REF_THRESH = 2.0  # Maximum difference between each side of the radius for a row to be considered reflected
-REF_DROP_PXL = 50  # Maximum value of a BW pixel for it to be considered part of the droplet (when finding reflection)
-REF_DROP_PXL_BORDER = 152  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
-REF_NONDROP = 225  # Minimum value of a BW pixel for it to be considered not part of the droplet (when finding sides)
-REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
-HEIGHT_RADIUS = 10  # Number of columns to each side of a given pixel to average over (enables smoother estimations)
-MIN_DROP_WIDTH = 100  # Pixel width of a dark region within an image in order to be considered a droplet (removes false-positives)
-
-NULL_FLAG = False  # Flag if null values were calculated; if true should add print statement
 FEATURES = ["file", "reflection_row", "dl_reflection_width", "dl_height_midpoint"]  # Named .csv columns (no pairs!!)
-
-
-def find_left(img, r):
-    """
-    Finds the leftmost point of the droplet at the current row
-
-    :return:
-    """
-    row = img[r]
-    for index, r in enumerate(row):
-        if r < REF_NONDROP:
-            # Now we check the droplet's width
-            flag = any([row[index + i] >= REF_NONDROP for i in range(0, MIN_DROP_WIDTH, MIN_DROP_WIDTH//10)])
-            if not flag:
-                return index
-    raise Exception("Unable to find left side of droplet")
-
-
-def _height_top(image, col_index, ref, avg=5):
-    """
-    Calculates the height of a column of a droplet image (in pixels) by taking an average of a surrounding radius, by
-    measuring from the top of the image down.
-
-    :return:
-    """
-    heights = []
-    for col_index in range (col_index-avg, col_index+avg+1, 1):
-        height = 0
-        while image[height][col_index] > REF_DROP_PXL_BORDER:
-            height += 1
-            if height >= len(image):  # case for when the measurement is outside the bounds of the droplet (rare)
-                global NULL_FLAG  # Update null flag
-                NULL_FLAG = True
-                return None
-        height = ref-height
-        heights.append(height)
-    return int(np.mean(heights))
-
-
-def _height(image, col_index, ref, avg=5):
-    """
-    Calculates the height of a column of a droplet image (in pixels) by taking an average of a surrounding radius, by
-    measuring from the bottom of the droplet up.
-
-    :return:
-    """
-    heights = []
-    for col_index in range (col_index-avg, col_index+avg+1, 1):
-        height = 0
-        while image[ref-height][col_index] < REF_DROP_PXL_BORDER:
-            height += 1
-            if height >= len(image):  # case for when the measurement is outside the bounds of the droplet (rare)
-                global NULL_FLAG  # Update null flag
-                NULL_FLAG = True
-                return None
-        heights.append(height)
-    return int(np.mean(heights))
-
-
-def _width(row):
-    """
-    Calculates the width of a row of a droplet image (in pixels)
-
-    :return:
-    """
-    left_size = 0  # non-droplet pixels to the left of the droplet
-    right_size = 0  # same as above, but to the right
-    for index, r in enumerate(row):
-        if r < REF_NONDROP and left_size == 0:  # start of the droplet
-            left_size = index
-            continue
-        elif r > REF_NONDROP and left_size != 0 and right_size == 0:  # end of the droplet
-            right_size = len(row)-index
-            break
-
-    if left_size == 0 and right_size == 0:  # case for when all white pixels (ie no droplet)
-        return 0
-    return len(row)-(left_size+right_size)
-
-
-def pp_height(image, ref=None):
-    """
-    Calculates the height of the supplied droplet images.
-    The height is defined as the maximum pixel distance between the top of the droplet and the reference line.
-
-    :return:
-    """
-    if ref is None:
-        ref == pp_refl(image)
-
-    heights = []
-    for col in range(0, len(image[0])):
-        heights.append(_height(image, col, ref))
-
-    return np.max(heights), np.where(heights == np.max(heights))
-
-
-def pp_width(image, ref=None):
-    """
-    Calculates the maximum width of the supplied droplet image.
-    The width is defined as the maximum pixel distance between both sides of the droplet above the reference line.
-    Note the width is not always guaranteed to be at the base of the droplet and fluctuates over its lifespan.
-
-    :return:
-    """
-    if ref is None:
-        ref == pp_refl(image)
-
-    width = []
-    for row in image[0:REF_LB]:
-        w = _width(row)
-        width.append(w)
-
-    return np.max(width)
-
-
-def pp_refl(image):
-    """
-    Calculates the reference line for the droplet image.
-    The 'reference line' is defined as where the base of the droplet meets its reflection.
-    :param image:
-    :return: a list of numbers representing the rows of reference within the images
-    """
-    REF_LB = len(image)
-    ref = REF_LB - REF_RADIUS
-    while ref > REF_RADIUS:  # for each row, check widths of lines above & below the current
-        pre = [_width(i) for i in image[ref-REF_RADIUS:ref]]
-        post = [_width(i) for i in image[ref:ref+REF_RADIUS]]
-        # print("Found at ", ref, ": ", np.mean(np.subtract(pre, post)))
-        if np.abs(np.mean(np.subtract(pre, post))) <= REF_THRESH:  # if within threshold, we have our reflection!
-            return ref
-        ref -= 1
-    raise Exception("Unable to find reflection line")
-
-
-def pp_midpoint(image, ref):
-    """
-    Calculates the midpoint on the droplet within the image.
-
-    :return:
-    """
-    mp = 0
-    left = 0
-    while mp < len(image[ref]):
-        if image[ref][mp] >= REF_DROP_PXL >= image[ref][mp + 1]:  # found left side of droplet
-            left = mp
-        elif image[ref][mp] <= REF_DROP_PXL <= image[ref][mp + 1] <= image[ref][mp+50]:  # found right side of droplet
-            return (mp-left)//2 + left
-        mp += 1
-    return mp
 
 
 def annotate_images(imgs, fpath, fnames, *data):
@@ -178,8 +17,7 @@ def annotate_images(imgs, fpath, fnames, *data):
     _ = _.pop()
     data = data[:-1]
     pair_data = []
-    [pair_data.extend([p.l_values, p.r_values, [p.l_index] * len(p.l_values), [p.r_index] * len(p.r_values)])
-     for p in _]
+    [pair_data.extend([p.l_values, p.r_values, [p.l_index] * len(p.l_values), [p.r_index] * len(p.r_values)]) for p in _]
 
     for im, name, d, p in zip(imgs, fnames, zip(*data), zip(*pair_data)):
         im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)  # convert from gs to rgb
@@ -192,7 +30,7 @@ def annotate_images(imgs, fpath, fnames, *data):
         for i in range(0, len(im[ref_line])):
             im[ref_line][i] = [60, 0, 164]  # highlight reference line in red
 
-        for r in range(ref_line-REF_RADIUS*15, ref_line):  # should be total of ~60px high
+        for r in range(ref_line-CONSTS.REF_RADIUS*15, ref_line):  # should be total of ~60px high
             im[r][lefts] = [253, 160, 2]  # highlight estimated ends of droplet in orange
             im[r][lefts+ref_w] = [253, 160, 2]
 
@@ -207,10 +45,10 @@ def annotate_images(imgs, fpath, fnames, *data):
             r_ind = p[3 + (4*pi)]
 
             if l_val is not None:  # When the height values are None just skip
-                for left in range(ref_line, ref_line - l_val, -1):
+                for left in range(ref_line, ref_line - int(l_val), -1):
                     im[left][l_ind] = [255, 255, 0]
             if r_val is not None:  # When the height values are None just skip
-                for right in range(ref_line, ref_line - r_val, -1):
+                for right in range(ref_line, ref_line - int(r_val), -1):
                     im[right][r_ind] = [255, 255, 0]
 
         cv2.imwrite(fpath+"/"+name, im)
@@ -285,13 +123,6 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
     """
     Main script (processes a single folder of images to generate CSV & (potentially) annotated files)
     """
-    # Define correct height methodology
-    if height_method == "top":
-        height = _height_top
-    elif height_method == "bottom":
-        height = _height
-    else:
-        raise Exception("Unknown height method, should be either \"top\" or \"bottom\"")
 
     # Establish path environment
     combined_path = datapath + "/" + dataset
@@ -303,33 +134,29 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
         images.append(img)
 
     print("Preprocessing", dataset + "...")
-    refls = [pp_refl(images[len(images) - 1])] * (len(images))  # assumes static reflection across all images of set
-    midpoint = pp_midpoint(images[3], refls[3])  # midpoint should be found when time = 2s
+    _refl = Droplet(images[-1], height_method)._reflection()
+    droplets = [Droplet(img, height_method, refl=_refl).setup() for img in images]
 
-    ref_w = [_width(i[r]) for i, r in zip(images, refls)]  # width of the droplet at the found reflection line
-    lefts = [find_left(i, r) for i, r in zip(images, refls)]  # left side of the droplet (needed to display widths)
-    mid_h = [height(i, midpoint, r, HEIGHT_RADIUS) for i, r in zip(images, refls)]  # height @ the midpoint
-
-    # Heights at even intervals on each side of the midpoint
     unprocessed_fearures = FEATURES.copy()
-    pairs = construct_pairs(ref_w[-1], 22, midpoint, padded=True)
+    pairs = construct_pairs(droplets[-1].wid, 22, droplets[-1].mid, padded=True)
     for p in pairs:
-        p.l_values = [height(im, p.l_index, r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
-        p.r_values = [height(im, p.r_index, r, HEIGHT_RADIUS) for im, r in zip(images, refls)]
+        p.l_values = [drop.height_average(p.l_index, CONSTS.HEIGHT_RADIUS) for drop in droplets]
+        p.r_values = [drop.height_average(p.r_index, CONSTS.HEIGHT_RADIUS) for drop in droplets]
         unprocessed_fearures.extend([p.l_name, p.r_name])
 
     processed_features = [FEATURES[0]] + [FEATURES[3]] + [p.merged_title() for p in pairs]  # Feats for the PROCESSED
-    to_csv(unprocessed_fearures, csv_exptpath, dataset+"_raw.csv", files, refls, ref_w, mid_h, pairs)
-    to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, mid_h, pairs, point_mean=True)
+    to_csv(unprocessed_fearures, csv_exptpath, dataset+"_raw.csv", files, [_refl]*len(droplets),
+           [d.rfl for d in droplets], [d.hgts[d.mid] for d in droplets], pairs)
+    to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, [d.hgts[d.mid] for d in droplets], pairs,
+           point_mean=True)
     print("Exported csv files: ", csv_exptpath+"/"+dataset)
 
     if annotate:
         if not os.path.exists(img_exptpath + "/" + dataset):
             os.makedirs(img_exptpath + "/" + dataset)
 
-        annotate_images(images, img_exptpath + "/" + dataset, files, refls, mid_h, [midpoint] * len(images), lefts,
-                        ref_w, pairs)
+        annotate_images(images, img_exptpath + "/" + dataset, files, [_refl]*len(droplets), [d.hgts[d.mid] for d in droplets],
+                        [d.mid for d in droplets], [d.l for d in droplets], [d.wid for d in droplets], pairs)
         print("Exported annotations: ", img_exptpath + "/" + dataset)
 
-    if NULL_FLAG:
-        print("\nWarning: Null values were produced for droplet height! Please verify any generated files.\n")
+    # print("\nWarning: Null values were produced for droplet height! Please verify any generated files.\n")

@@ -3,6 +3,7 @@ import os
 import cv2
 import preprocess as pp
 import numpy as np
+from Image import Droplet
 
 BW_CROP = 230
 
@@ -11,6 +12,8 @@ def _find_crop(img):
     """
     Finds the crop point of an image (where the black value along one side rises above a threshold0
     """
+    drop = Droplet(img, "top")
+    img = drop.img
     vertical = None
     for i, row in enumerate(img):  # First find the vertical crop point
         if row[0] < BW_CROP and img[i+50][0] < BW_CROP and img[i+100][0] < BW_CROP and vertical is None:

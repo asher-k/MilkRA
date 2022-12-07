@@ -3,6 +3,7 @@ from argparse import ArgumentParser, BooleanOptionalAction
 from crop import crop_all
 import preprocess as single
 import script as multi
+from Image import CONSTS
 
     
 def define_arguments():
@@ -30,10 +31,9 @@ def define_arguments():
 # Delegate model to correct mode, using the provided arguments.
 if __name__ == '__main__':
     args = define_arguments()
-    single.HEIGHT_RADIUS = args.height_radius
+    CONSTS.HEIGHT_RADIUS = args.height_radius
 
     # First check for crop
-    print(args.crop)
     if args.crop:
         crop_all(args.datapath, args.dataset, args.mode == 'single', args.croppath)
         args.datapath = args.croppath  # Update the directory to that of the cropped images
