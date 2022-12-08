@@ -23,8 +23,10 @@ def define_arguments():
     a.add_argument('--num_states', default=1, type=int, help='Number of random states to compute model performances at')
 
     a.add_argument('--dir', default='../data/processed', type=str, help='Path to data folders')
-    a.add_argument('--type', default='processed', type=str, help='Observations contain a raw and processed csv file')
+    a.add_argument('--type', default='processed', type=str, choices=['processed', 'raw'],
+                   help='Observations contain a raw and processed csv file')
     a.add_argument('--logs_dir', default='../logs/', type=str, help='Logging directory')
+    a.add_argument('--logs_name', default='run', type=str, help='Logging directory')
 
     a.add_argument('--model', default='logreg', type=str, help='ML classification model')
     a.add_argument('--load_only', default=None, type=int, help='Only load droplet sequences at the provided timestep')
@@ -79,10 +81,20 @@ def load(data_dir, data_type, **kwargs):
 # Delegate mode to correct model, using the provided arguments.
 if __name__ == '__main__':
     args = define_arguments()
+    if args.centre_avg and args.load_only is not None:
+        raise ValueError("Simultaneous centre_avg and load_only is unsupported; please run with only one argument.")
+    if args.model not in models.keys():
+        raise ValueError("Unknown model type {model}".format(model=args.model))
+
     logs_dir = args.logs_dir
     if not os.path.exists(logs_dir):
         os.mkdir(logs_dir)
-    logging.basicConfig(filename=logs_dir+"{name}.txt".format(name="run"), level=logging.DEBUG,
+    formatted_name = "{name}_{model}_{type}{norm}{avg}{only}".format(name=args.logs_name, model=args.model,
+                                                                     type=args.type, norm="_norm" if args.normalize
+                                                                     else "", avg="_mpmean"if args.centre_avg else "",
+                                                                     only="_"+str(args.load_only) if str(args.load_only)
+                                                                     is not None else "")
+    logging.basicConfig(filename=logs_dir+"{name}.txt".format(name=formatted_name), level=logging.DEBUG,
                         format="%(asctime)s: %(message)s", filemode="w")
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))  # also print to console
 
@@ -99,5 +111,11 @@ if __name__ == '__main__':
             r.append(result)
 
         results = pd.DataFrame(r)
+        stddevs = results.std()  # light post-run averaging
         results = results.mean(axis=0).round(decimals=3)
+
+        for col, val in stddevs.iteritems():  # reformatting
+            results[col+"+-"] = val
+        results = results.to_frame().transpose()
+        results = results.reindex(sorted(results.columns), axis=1)
         logging.info(msg="\nPerformance Statistics\n"+str(results))
