@@ -1,10 +1,9 @@
 import logging
-from sklearn.preprocessing import OneHotEncoder
 from sklearn.naive_bayes import GaussianNB
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import accuracy_score, roc_auc_score
-import numpy.random as rand
+import numpy.random as nprand
 
 
 def log_results(preds, trues, probs, name="?Model?"):
@@ -16,7 +15,7 @@ def log_results(preds, trues, probs, name="?Model?"):
     :param probs: predicted label probabilities
     :param name: string identifier of model
     """
-    logging.info("{name}".format(name=name))
+    logging.info("{name} obtained results".format(name=name))
     results = {}
     results.update({"Accuracy": accuracy_score(trues, preds)})
     results.update({"ROC AUC": roc_auc_score(trues, probs, multi_class="ovo")})
@@ -33,8 +32,7 @@ def logreg(x_data, x_labels, y_data, y_labels, **kwargs):
     :param y_labels: testing labels
     :return: statistics on model performance
     """
-    rand.seed(kwargs["random_state"])
-    lr = LogisticRegression(random_state=kwargs["random_state"], max_iter=1000)  # no convergence at iters=100
+    lr = LogisticRegression(random_state=kwargs['random_state'], max_iter=100)  # no convergence at iters=100
     lr.fit(x_data, x_labels)
 
     preds = lr.predict(y_data)
@@ -81,5 +79,19 @@ def dtree(x_data, x_labels, y_data, y_labels, **kwargs):
     return res
 
 
-models = {"logreg": [logreg], "nbayes": [nbayes], "dt": [dtree]}
-models.update({"all": [logreg, nbayes, dtree]})
+def _seed_decorator(func):
+    """
+    Decorator for setting up seed values outside of model functions
+
+    :param func: function (model) to wrap seed setup
+    :return: results of wrapped model
+    """
+    def execute(*args, **kwargs):
+        state = kwargs["random_state"]
+        nprand.seed(state)
+        return func(*args, **kwargs)
+    return execute
+
+
+models = {"logreg": [_seed_decorator(logreg)], "nbayes": [_seed_decorator(nbayes)], "dt": [_seed_decorator(dtree)]}
+models.update({"all": [_seed_decorator(logreg), _seed_decorator(nbayes), _seed_decorator(dtree)]})
