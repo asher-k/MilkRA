@@ -1,11 +1,13 @@
 """
-python main.py --type processed --model
+python main.py --type processed --seed 1 --num_states 30 --model
 """
 import os
+import logging
 from argparse import ArgumentParser
 from methods import models
 from sklearn.model_selection import train_test_split
 import pandas as pd
+import random
 
 
 def define_arguments():
@@ -18,6 +20,10 @@ def define_arguments():
     a.add_argument('--model', default='logreg', type=str, help='ML classification model')
     a.add_argument('--dir', default='../data/processed', type=str, help='Path to data folders')
     a.add_argument('--type', default='processed', type=str, help='Observations contain a raw and processed csv file')
+    a.add_argument('--seed', default=1, type=int, help='Initial seed of random for generating random seeds')
+    a.add_argument('--num_states', default=1, type=int, help='Number of random states to compute model performances at')
+
+    a.add_argument('--logs_dir', default='../logs/', type=str, help='Logging directory')
     a = a.parse_args()
     return a
 
@@ -56,8 +62,23 @@ def load(data_dir, data_type):
 # Delegate mode to correct model, using the provided arguments.
 if __name__ == '__main__':
     args = define_arguments()
+    logs_dir = args.logs_dir
+    if not os.path.exists(logs_dir):
+        os.mkdir(logs_dir)
+    logging.basicConfig(filename=logs_dir+"{name}.txt".format(name="run"), level=logging.DEBUG,
+                        format="%(asctime)s: %(message)s", filemode="w")
 
+    # load & reformat
+    random.seed(args.seed)
     data, labels = load(args.dir, args.type)
-    train_d, test_d, train_l, test_l = train_test_split(data, labels, test_size=0.3)
+    train_d, test_d, train_l, test_l = train_test_split(data, labels, test_size=0.3, stratify=labels)
 
-    models[args.model](train_d, train_l, test_d, test_l)
+    # execute models
+    for model in models[args.model]:
+        r = []
+        for state in random.sample(range(0, 100000), args.num_states):
+            r.append(model(train_d, train_l, test_d, test_l, random_state=state))
+
+        results = pd.DataFrame(r)
+        # results = results.mean(axis=0)
+        print(results)
