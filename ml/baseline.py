@@ -1,15 +1,14 @@
-import logging
 import numpy as np
 import numpy.random as nprand
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, roc_auc_score
+from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 
 
-def log_results(preds, trues, probs=[], name="?Model?"):
+def _results_logging(preds, trues, probs=[], name="?Model?"):
     """
     Logs classifier predictions and provides formatted statistics about performance
 
@@ -21,6 +20,11 @@ def log_results(preds, trues, probs=[], name="?Model?"):
     results = {}
     results.update({"Accuracy": accuracy_score(trues, preds)})
     results.update({"ROC AUC": np.NaN if len(probs) == 0 else roc_auc_score(trues, probs, multi_class="ovo")})
+    class_stats = classification_report(trues, preds, output_dict=True, zero_division=0)
+    for var_to_save in ['precision', 'recall']:
+        [results.update({"{i}_{var}".format(i=i, var=var_to_save): class_stats[i][var_to_save]}) for i in class_stats
+         if type(class_stats[i]) is dict]
+    results = {k: v for k, v in results.items() if "macro" not in k}  # remove duplicated results
     return results
 
 
@@ -39,7 +43,7 @@ def logreg(x_data, x_labels, y_data, y_labels, **kwargs):
 
     preds = lr.predict(y_data)
     probs = lr.predict_proba(y_data)
-    res = log_results(preds, y_labels, probs, name="Logistic Regression")
+    res = _results_logging(preds, y_labels, probs, name="Logistic Regression")
     return res
 
 
@@ -58,7 +62,7 @@ def nbayes(x_data, x_labels, y_data, y_labels, **kwargs):
 
     preds = nb.predict(y_data)
     probs = nb.predict_proba(y_data)
-    res = log_results(preds, y_labels, probs, name="Naive Bayes")
+    res = _results_logging(preds, y_labels, probs, name="Naive Bayes")
     return res
 
 
@@ -77,7 +81,7 @@ def dtree(x_data, x_labels, y_data, y_labels, **kwargs):
 
     preds = dt.predict(y_data)
     probs = dt.predict_proba(y_data)
-    res = log_results(preds, y_labels, probs, name="Decision Tree")
+    res = _results_logging(preds, y_labels, probs, name="Decision Tree")
     return res
 
 
@@ -96,7 +100,7 @@ def knn(x_data, x_labels, y_data, y_labels, **kwargs):
 
     preds = kn.predict(y_data)
     probs = kn.predict_proba(y_data)
-    res = log_results(preds, y_labels, probs, name="KNN")
+    res = _results_logging(preds, y_labels, probs, name="KNN")
     return res
 
 
@@ -114,7 +118,7 @@ def svc(x_data, x_labels, y_data, y_labels, **kwargs):
     vec.fit(x_data, x_labels)
 
     preds = vec.predict(y_data)
-    res = log_results(preds, y_labels, name="SVC")
+    res = _results_logging(preds, y_labels, name="SVC")
     return res
 
 
@@ -133,5 +137,5 @@ def _seed_decorator(func):
 
 
 models = {"logreg": [logreg], "nbayes": [nbayes], "dt": [dtree], "knn": [knn], "svc": [svc]}
-models.update({"all": [logreg, nbayes, dtree, knn, svc]})
+models.update({"all": [i[0] for i in models.values()]})
 [models.update({k: [_seed_decorator(m) for m in models[k]]}) for k in models.keys()]

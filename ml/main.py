@@ -1,5 +1,5 @@
 """
-python main.py --type processed --seed 1 --num_states 30 --model
+python main.py --type processed --seed 1 --num_states 30 --save --model
 """
 import os
 import logging
@@ -27,6 +27,11 @@ def define_arguments():
                    help='Observations contain a raw and processed csv file')
     a.add_argument('--logs_dir', default='../logs/', type=str, help='Logging directory')
     a.add_argument('--logs_name', default='run', type=str, help='Logging directory')
+    a.add_argument('--save', default=False, action=BooleanOptionalAction, help='Save performance statistics to a CSV '
+                                                                               'in the logging directory')
+    a.add_argument('--verbose', default=False, action=BooleanOptionalAction, help='When true print performance '
+                                                                                  'statistics to console as well as '
+                                                                                  'logging file')
 
     a.add_argument('--model', default='logreg', type=str, help='ML classification model')
     a.add_argument('--load_only', default=None, type=int, help='Only load droplet sequences at the provided timestep')
@@ -89,14 +94,13 @@ if __name__ == '__main__':
     logs_dir = args.logs_dir
     if not os.path.exists(logs_dir):
         os.mkdir(logs_dir)
-    formatted_name = "{name}_{model}_{type}{norm}{avg}{only}".format(name=args.logs_name, model=args.model,
-                                                                     type=args.type, norm="_norm" if args.normalize
-                                                                     else "", avg="_mpmean"if args.centre_avg else "",
-                                                                     only="_"+str(args.load_only) if str(args.load_only)
-                                                                     is not None else "")
+    formatted_name = "{name}_{model}_{type}{norm}{avg}{only}"\
+        .format(name=args.logs_name, model=args.model, type=args.type, norm="_norm" if args.normalize else "",
+                avg="_mpmean"if args.centre_avg else "", only="_"+str(args.load_only) if str(args.load_only) is not None else "")
     logging.basicConfig(filename=logs_dir+"{name}.txt".format(name=formatted_name), level=logging.DEBUG,
                         format="%(asctime)s: %(message)s", filemode="w")
-    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))  # also print to console
+    if args.verbose:
+        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))  # also print to console
 
     # load & reformat
     nprand.seed(args.seed)
@@ -104,6 +108,11 @@ if __name__ == '__main__':
 
     # execute models
     for model in models[args.model]:
+        if args.model == "all":  # can infer model name from model keys
+            model_name = list(models.keys())[models[args.model].index(model)]
+        else:
+            model_name = list(models.keys())[list(models.values()).index([model])]
+
         r = []
         for state in nprand.randint(0, 99999, size=args.num_states):
             train_d, test_d, train_l, test_l = train_test_split(data, labels, test_size=0.3, stratify=labels)
@@ -118,4 +127,15 @@ if __name__ == '__main__':
             results[col+"+-"] = val
         results = results.to_frame().transpose()
         results = results.reindex(sorted(results.columns), axis=1)
-        logging.info(msg="\nPerformance Statistics\n"+str(results))
+        logging.info(msg="\nPerformance Statistics\n"+str(results)+"\n")
+
+        if args.save:  # save results to a csv file
+            save_dir = "{log}/{mod}".format(log=logs_dir, mod=model_name)
+            if not os.path.exists(save_dir):
+                os.mkdir(save_dir)
+            results.to_csv("{save}/{type}{norm}{avg}{only}.csv"
+                           .format(save=save_dir, type=args.type, norm="_norm" if args.normalize else "",
+                                   avg="_mpmean" if args.centre_avg else "",
+                                   only="_"+str(args.load_only) if str(args.load_only) is not None else ""))
+
+
