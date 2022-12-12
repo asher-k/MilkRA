@@ -1,5 +1,5 @@
 """
-python main.py --type processed --seed 1 --num_states 30 --save --model
+python main.py --type processed --seed 1 --num_states 60 --normalize --save --model
 """
 import os
 import logging
@@ -26,7 +26,7 @@ def define_arguments():
     a.add_argument('--type', default='processed', type=str, choices=['processed', 'raw'],
                    help='Observations contain a raw and processed csv file')
     a.add_argument('--logs_dir', default='../logs/', type=str, help='Logging directory')
-    a.add_argument('--logs_name', default='run', type=str, help='Logging directory')
+    a.add_argument('--name', default='run', type=str, help='Logging directory')
     a.add_argument('--save', default=False, action=BooleanOptionalAction, help='Save performance statistics to a CSV '
                                                                                'in the logging directory')
     a.add_argument('--verbose', default=False, action=BooleanOptionalAction, help='When true print performance '
@@ -95,7 +95,7 @@ if __name__ == '__main__':
     if not os.path.exists(logs_dir):
         os.mkdir(logs_dir)
     formatted_name = "{name}_{model}_{type}{norm}{avg}{only}"\
-        .format(name=args.logs_name, model=args.model, type=args.type, norm="_norm" if args.normalize else "",
+        .format(name=args.name, model=args.model, type=args.type, norm="_norm" if args.normalize else "",
                 avg="_mpmean"if args.centre_avg else "", only="_"+str(args.load_only) if str(args.load_only) is not None else "")
     logging.basicConfig(filename=logs_dir+"{name}.txt".format(name=formatted_name), level=logging.DEBUG,
                         format="%(asctime)s: %(message)s", filemode="w")
@@ -133,9 +133,9 @@ if __name__ == '__main__':
             save_dir = "{log}/{mod}".format(log=logs_dir, mod=model_name)
             if not os.path.exists(save_dir):
                 os.mkdir(save_dir)
-            results.to_csv("{save}/{type}{norm}{avg}{only}.csv"
-                           .format(save=save_dir, type=args.type, norm="_norm" if args.normalize else "",
-                                   avg="_mpmean" if args.centre_avg else "",
+            results.to_csv("{save}/{name}{type}{norm}{avg}{only}.csv"
+                           .format(name=args.name, save=save_dir, type=args.type, norm="_norm" if args.normalize else ""
+                                   , avg="_mpmean" if args.centre_avg else "",
                                    only="_"+str(args.load_only) if str(args.load_only) is not None else ""))
 
 

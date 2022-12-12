@@ -4,22 +4,23 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 
 
-def _results_logging(preds, trues, probs=[], name="?Model?"):
+def _results_logging(preds, trues, probs=None, name="?Model?"):
     """
     Logs classifier predictions and provides formatted statistics about performance
 
     :param preds: predicted labels
     :param trues: true labels
     :param probs: predicted label probabilities
-    :param name: string identifier of model
+    :param name: string identifier of model (if logging added)
     """
     results = {}
     results.update({"Accuracy": accuracy_score(trues, preds)})
-    results.update({"ROC AUC": np.NaN if len(probs) == 0 else roc_auc_score(trues, probs, multi_class="ovo")})
+    results.update({"ROC AUC": np.NaN if probs is None else roc_auc_score(trues, probs, multi_class="ovo")})
     class_stats = classification_report(trues, preds, output_dict=True, zero_division=0)
     for var_to_save in ['precision', 'recall']:
         [results.update({"{i}_{var}".format(i=i, var=var_to_save): class_stats[i][var_to_save]}) for i in class_stats
@@ -38,7 +39,7 @@ def logreg(x_data, x_labels, y_data, y_labels, **kwargs):
     :param y_labels: testing labels
     :return: statistics on model performance
     """
-    lr = LogisticRegression(random_state=kwargs['random_state'], max_iter=100)  # no convergence at iters=100
+    lr = LogisticRegression(random_state=kwargs['random_state'])  # no convergence at iters=100
     lr.fit(x_data, x_labels)
 
     preds = lr.predict(y_data)
@@ -76,7 +77,7 @@ def dtree(x_data, x_labels, y_data, y_labels, **kwargs):
     :param y_labels: testing labels
     :return: statistics on model performance
     """
-    dt = DecisionTreeClassifier(random_state=kwargs["random_state"])
+    dt = DecisionTreeClassifier(max_features=4, random_state=kwargs["random_state"])  # min_impurity_split=0.1,
     dt.fit(x_data, x_labels)
 
     preds = dt.predict(y_data)
@@ -95,7 +96,7 @@ def knn(x_data, x_labels, y_data, y_labels, **kwargs):
     :param y_labels: testing labels
     :return: statistics on model performance
     """
-    kn = KNeighborsClassifier()
+    kn = KNeighborsClassifier(n_neighbors=5, weights='distance')
     kn.fit(x_data, x_labels)
 
     preds = kn.predict(y_data)
@@ -114,11 +115,31 @@ def svc(x_data, x_labels, y_data, y_labels, **kwargs):
     :param y_labels: testing labels
     :return: statistics on model performance
     """
-    vec = SVC()
+    vec = SVC(kernel='rbf')
     vec.fit(x_data, x_labels)
 
     preds = vec.predict(y_data)
     res = _results_logging(preds, y_labels, name="SVC")
+    return res
+
+
+def mlp(x_data, x_labels, y_data, y_labels, **kwargs):
+    """
+    Multilayer Perceptron
+
+    :param x_data: droplet evaporation sequence training data
+    :param x_labels: training labels
+    :param y_data: droplet evaporation sequence testing data
+    :param y_labels: testing labels
+    :return: statistics on model performance
+    """
+    per = MLPClassifier(hidden_layer_sizes=(32, 16, 8), learning_rate='adaptive', random_state=kwargs["random_state"],
+                        max_iter=1000)
+    per.fit(x_data, x_labels)
+
+    preds = per.predict(y_data)
+    probs = per.predict_proba(y_data)
+    res = _results_logging(preds, y_labels, probs, name="MLP")
     return res
 
 
@@ -136,6 +157,6 @@ def _seed_decorator(func):
     return execute
 
 
-models = {"logreg": [logreg], "nbayes": [nbayes], "dt": [dtree], "knn": [knn], "svc": [svc]}
+models = {"logreg": [logreg], "nbayes": [nbayes], "dt": [dtree], "knn": [knn], "svc": [svc], "mlp": [mlp]}
 models.update({"all": [i[0] for i in models.values()]})
 [models.update({k: [_seed_decorator(m) for m in models[k]]}) for k in models.keys()]
