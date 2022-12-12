@@ -4,7 +4,6 @@ python main.py --type processed --seed 1 --num_states 60 --normalize --save --mo
 import os
 import logging
 import sys
-import random
 import pandas as pd
 import numpy.random as nprand
 from argparse import ArgumentParser, BooleanOptionalAction
@@ -90,6 +89,8 @@ if __name__ == '__main__':
         raise ValueError("Simultaneous centre_avg and load_only is unsupported; please run with only one argument.")
     if args.model not in models.keys():
         raise ValueError("Unknown model type {model}".format(model=args.model))
+    if not args.save and not args.verbose:
+        logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
 
     logs_dir = args.logs_dir
     if not os.path.exists(logs_dir):
@@ -114,28 +115,40 @@ if __name__ == '__main__':
             model_name = list(models.keys())[list(models.values()).index([model])]
 
         r = []
+        p = []
         for state in nprand.randint(0, 99999, size=args.num_states):
             train_d, test_d, train_l, test_l = train_test_split(data, labels, test_size=0.3, stratify=labels)
-            result = model(train_d, train_l, test_d, test_l, random_state=state)
+            result, imp = model(train_d, train_l, test_d, test_l, random_state=state)
+            if imp is not None:
+                p.append(imp)
             r.append(result)
 
         results = pd.DataFrame(r)
         stddevs = results.std()  # light post-run averaging
         results = results.mean(axis=0).round(decimals=3)
-
-        for col, val in stddevs.iteritems():  # reformatting
+        for col, val in stddevs.iteritems():  # reformatting stddev column names
             results[col+"+-"] = val
         results = results.to_frame().transpose()
         results = results.reindex(sorted(results.columns), axis=1)
+
         logging.info(msg="\nPerformance Statistics\n"+str(results)+"\n")
+        save_dir = "{log}/{mod}".format(log=logs_dir, mod=model_name)
 
         if args.save:  # save results to a csv file
-            save_dir = "{log}/{mod}".format(log=logs_dir, mod=model_name)
             if not os.path.exists(save_dir):
                 os.mkdir(save_dir)
             results.to_csv("{save}/{name}{type}{norm}{avg}{only}.csv"
                            .format(name=args.name, save=save_dir, type=args.type, norm="_norm" if args.normalize else ""
                                    , avg="_mpmean" if args.centre_avg else "",
                                    only="_"+str(args.load_only) if str(args.load_only) is not None else ""))
+
+        if args.save and p:  # format & save feature priorities into a subdirectory
+            priority = pd.DataFrame(p)
+            priority = priority.abs()
+            priority = priority.mean(axis=0).round(decimals=3)
+            priority = priority.to_frame().transpose()
+            if not os.path.exists(save_dir+"/importance"):
+                os.mkdir(save_dir+"/importance")
+            priority.to_csv("{save}/importance/{model}.csv".format(save=save_dir, model=args.name))
 
 

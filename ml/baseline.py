@@ -37,7 +37,7 @@ def logreg(x_data, x_labels, y_data, y_labels, **kwargs):
     :param x_labels: training labels
     :param y_data: droplet evaporation sequence testing data
     :param y_labels: testing labels
-    :return: statistics on model performance
+    :return: statistics on model performance, feature importances
     """
     lr = LogisticRegression(random_state=kwargs['random_state'])  # no convergence at iters=100
     lr.fit(x_data, x_labels)
@@ -45,7 +45,10 @@ def logreg(x_data, x_labels, y_data, y_labels, **kwargs):
     preds = lr.predict(y_data)
     probs = lr.predict_proba(y_data)
     res = _results_logging(preds, y_labels, probs, name="Logistic Regression")
-    return res
+
+    importance = lr.coef_[0]
+    importance = [v for i, v in enumerate(importance)]
+    return res, importance
 
 
 def nbayes(x_data, x_labels, y_data, y_labels, **kwargs):
@@ -56,7 +59,7 @@ def nbayes(x_data, x_labels, y_data, y_labels, **kwargs):
     :param x_labels: training labels
     :param y_data: droplet evaporation sequence testing data
     :param y_labels: testing labels
-    :return: statistics on model performance
+    :return: statistics on model performance, None
     """
     nb = GaussianNB()
     nb.fit(x_data, x_labels)
@@ -64,7 +67,7 @@ def nbayes(x_data, x_labels, y_data, y_labels, **kwargs):
     preds = nb.predict(y_data)
     probs = nb.predict_proba(y_data)
     res = _results_logging(preds, y_labels, probs, name="Naive Bayes")
-    return res
+    return res, None
 
 
 def dtree(x_data, x_labels, y_data, y_labels, **kwargs):
@@ -75,7 +78,7 @@ def dtree(x_data, x_labels, y_data, y_labels, **kwargs):
     :param x_labels: training labels
     :param y_data: droplet evaporation sequence testing data
     :param y_labels: testing labels
-    :return: statistics on model performance
+    :return: statistics on model performance, feature importances
     """
     dt = DecisionTreeClassifier(max_features=4, random_state=kwargs["random_state"])  # min_impurity_split=0.1,
     dt.fit(x_data, x_labels)
@@ -83,7 +86,10 @@ def dtree(x_data, x_labels, y_data, y_labels, **kwargs):
     preds = dt.predict(y_data)
     probs = dt.predict_proba(y_data)
     res = _results_logging(preds, y_labels, probs, name="Decision Tree")
-    return res
+
+    importance = dt.feature_importances_
+    importance = [v for i, v in enumerate(importance)]
+    return res, importance
 
 
 def knn(x_data, x_labels, y_data, y_labels, **kwargs):
@@ -94,7 +100,7 @@ def knn(x_data, x_labels, y_data, y_labels, **kwargs):
     :param x_labels: training labels
     :param y_data: droplet evaporation sequence testing data
     :param y_labels: testing labels
-    :return: statistics on model performance
+    :return: statistics on model performance, None
     """
     kn = KNeighborsClassifier(n_neighbors=5, weights='distance')
     kn.fit(x_data, x_labels)
@@ -102,7 +108,7 @@ def knn(x_data, x_labels, y_data, y_labels, **kwargs):
     preds = kn.predict(y_data)
     probs = kn.predict_proba(y_data)
     res = _results_logging(preds, y_labels, probs, name="KNN")
-    return res
+    return res, None
 
 
 def svc(x_data, x_labels, y_data, y_labels, **kwargs):
@@ -113,14 +119,14 @@ def svc(x_data, x_labels, y_data, y_labels, **kwargs):
     :param x_labels: training labels
     :param y_data: droplet evaporation sequence testing data
     :param y_labels: testing labels
-    :return: statistics on model performance
+    :return: statistics on model performance, None
     """
     vec = SVC(kernel='rbf')
     vec.fit(x_data, x_labels)
 
     preds = vec.predict(y_data)
     res = _results_logging(preds, y_labels, name="SVC")
-    return res
+    return res, None
 
 
 def mlp(x_data, x_labels, y_data, y_labels, **kwargs):
@@ -131,7 +137,7 @@ def mlp(x_data, x_labels, y_data, y_labels, **kwargs):
     :param x_labels: training labels
     :param y_data: droplet evaporation sequence testing data
     :param y_labels: testing labels
-    :return: statistics on model performance
+    :return: statistics on model performance, None
     """
     per = MLPClassifier(hidden_layer_sizes=(32, 16, 8), learning_rate='adaptive', random_state=kwargs["random_state"],
                         max_iter=1000)
@@ -140,7 +146,7 @@ def mlp(x_data, x_labels, y_data, y_labels, **kwargs):
     preds = per.predict(y_data)
     probs = per.predict_proba(y_data)
     res = _results_logging(preds, y_labels, probs, name="MLP")
-    return res
+    return res, None
 
 
 def _seed_decorator(func):
