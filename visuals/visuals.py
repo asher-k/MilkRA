@@ -88,6 +88,13 @@ def _time_steps():
     return [0, 25, 50, 75, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900]
 
 
+def f1(data, pre, rec):
+    """
+    F1 score from precision & recall metrics
+    """
+    return 2 * ((data[pre]*data[rec])/(data[pre]+data[rec]))
+
+
 def _load_and_sort(path, ext, sort=False):
     """
     Loads and sorts alphanumerically files from the provided directory.
@@ -213,7 +220,11 @@ if __name__ == '__main__':
     # Accuracy figure
     acc_models = []
     for model in folders:   # accuracies
-        acc_models.append(load_model_expr(in_dir + model + "/"))
+        ex = load_model_expr(in_dir + model + "/")
+        if "f1" in args.metric:  # manually calculate f1 from precision & recall
+            name = re.split("_", args.metric)[0]
+            ex[args.metric] = f1(ex, name+"_precision", name+"_recall")
+        acc_models.append(ex)
     accuracy_plot(acc_models, folders, args.metric)
     plt.savefig(f'{out_dir}{args.data}_{args.metric}.png')
     plt.clf()
