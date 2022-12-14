@@ -5,6 +5,7 @@ import os
 import logging
 import sys
 import pandas as pd
+import numpy as np
 import numpy.random as nprand
 from argparse import ArgumentParser, BooleanOptionalAction
 from baseline import models
@@ -108,7 +109,9 @@ if __name__ == '__main__':
     if not args.save and not args.verbose:
         logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
 
-    logs_dir = args.logs_dir
+    logs_dir = "{ld}{td}/".format(ld=args.logs_dir, td=args.type)
+    if not os.path.exists(args.logs_dir):
+        os.mkdir(args.logs_dir)
     if not os.path.exists(logs_dir):
         os.mkdir(logs_dir)
     formatted_name = "{name}_{model}_{type}{norm}{avg}{only}"\
@@ -154,20 +157,23 @@ if __name__ == '__main__':
             if not os.path.exists(save_dir):
                 os.mkdir(save_dir)
             results.to_csv("{save}/{name}{type}{norm}{avg}{only}.csv"
-                           .format(name=args.name, save=save_dir, type=args.type, norm="_norm" if args.normalize else ""
-                                   , avg="_mpmean" if args.centre_avg else "",
+                           .format(name=args.name, save=save_dir, type=args.type,
+                                   norm="_norm" if args.normalize else "", avg="_mpmean" if args.centre_avg else "",
                                    only="_"+str(args.load_only) if str(args.load_only) is not None else ""))
 
         if args.save and p:  # format & save feature priorities into a subdirectory
-            priority = pd.DataFrame(p, columns=_col_order(args.type))
-            priority = priority.abs()
-            priority = priority.mean(axis=0).round(decimals=3)
-            priority = priority.to_frame().transpose()
             if not os.path.exists(save_dir+"/importance"):
                 os.mkdir(save_dir+"/importance")
-            priority.to_csv("{save}/importance/{name}{type}{norm}{avg}{only}.csv"
-                            .format(name=args.name, save=save_dir, type=args.type, norm="_norm" if args.normalize else
-                            "", avg="_mpmean" if args.centre_avg else "", only="_"+str(args.load_only) if
-                            str(args.load_only) is not None else ""))
+            save_name = "{name}{type}{norm}{avg}{only}".format(name=args.name, save=save_dir, type=args.type,
+                                                               norm="_norm" if args.normalize else "",
+                                                               avg="_mpmean" if args.centre_avg else "",
+                                                               only="_"+str(args.load_only) if str(args.load_only) is not None else "")
 
+            priority = pd.DataFrame(p, columns=_col_order(args.type))
+            priority = priority.abs()
+            cvs = np.cov(priority, rowvar=False)
+            np.save(save_dir + "/importance/" + save_name + ".npy", cvs)
 
+            priority = priority.mean(axis=0).round(decimals=3)
+            priority = priority.to_frame().transpose()
+            priority.to_csv("{save}/importance/{sn}.csv".format(save=save_dir, sn=save_name))
