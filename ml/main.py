@@ -42,6 +42,22 @@ def define_arguments():
     return a
 
 
+def _col_order(data_type):
+    """
+    Returns constants representing column orders defined externally by the data
+
+    :param data_type: type of data being used: either raw or processed
+    :return:
+    """
+    if data_type == "processed":
+        return ['edge_4_r_to_edge_4_l', 'edge_3_r_to_edge_3_l', '11l_to_11r', 'edge_2_r_to_edge_2_l',
+                'edge_1_r_to_edge_1_l', '10l_to_10r', '9l_to_9r', '8l_to_8r', '7l_to_7r', '6l_to_6r', '5l_to_5r',
+                '4l_to_4r', '3l_to_3r', '2l_to_2r', '1l_to_1r', 'dl_height_midpoint']
+    return ['edge_4_l', 'edge_3_l', '11l', 'edge_2_l', 'edge_1_l', '10l', '9l', '8l', '7l', '6l', '5l', '4l', '3l',
+            '2l', '1l', 'dl_height_midpoint', '1r', '2r', '3r', '4r', '5r', '6r', '7r', '8r', '9r', '10r', 'edge_1_r',
+            'edge_2_r', '11r', 'edge_3_r', 'edge_4_r']
+
+
 def load(data_dir, data_type, **kwargs):
     """
     Loads preprocessed samples of droplet sequences, including
@@ -60,11 +76,11 @@ def load(data_dir, data_type, **kwargs):
             file = list(filter(lambda fl: data_type+".csv" in fl, files))
             file = pd.read_csv(file_dir+file[0])
             seqs.append(file)
-
         index_cols = 2 if "processed" in data_type else 4  # depending on raw vs processed, different num of ref. cols.
         [norm_consts.append(s.iloc[0, index_cols]) for s in seqs]  # track normalization constant for each droplet seq.
-        seqs = [i.iloc[:900, index_cols:] for i in seqs] if kwargs['at'] is None \
-            else [i.iloc[kwargs['at'], index_cols:] for i in seqs]
+        seqs = [s[_col_order(data_type)] for s in seqs]  # reshape column orders
+        seqs = [i.iloc[:900, :] for i in seqs] if kwargs['at'] is None \
+            else [i.iloc[kwargs['at'], :] for i in seqs]
 
         if kwargs['centre_avg']:  # get mean over centre 3 observations
             to_avg = ["dl_height_midpoint", "2l_to_2r", "1l_to_1r"]
@@ -143,12 +159,15 @@ if __name__ == '__main__':
                                    only="_"+str(args.load_only) if str(args.load_only) is not None else ""))
 
         if args.save and p:  # format & save feature priorities into a subdirectory
-            priority = pd.DataFrame(p)
+            priority = pd.DataFrame(p, columns=_col_order(args.type))
             priority = priority.abs()
             priority = priority.mean(axis=0).round(decimals=3)
             priority = priority.to_frame().transpose()
             if not os.path.exists(save_dir+"/importance"):
                 os.mkdir(save_dir+"/importance")
-            priority.to_csv("{save}/importance/{model}.csv".format(save=save_dir, model=args.name))
+            priority.to_csv("{save}/importance/{name}{type}{norm}{avg}{only}.csv"
+                            .format(name=args.name, save=save_dir, type=args.type, norm="_norm" if args.normalize else
+                            "", avg="_mpmean" if args.centre_avg else "", only="_"+str(args.load_only) if
+                            str(args.load_only) is not None else ""))
 
 

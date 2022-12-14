@@ -133,4 +133,5 @@ dmypy.json
 
 # Project-specific ignores
 logs/
+logs_processed/
 *.Rhistory
