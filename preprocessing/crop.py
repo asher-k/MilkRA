@@ -20,7 +20,7 @@ def _find_crop(img):
             vertical = i
             break
 
-    horizontal = pp.find_left(img, vertical) - 100
+    horizontal = drop._bounds(vertical)[0] - 100
 
     #  Then return the crop point
     return vertical if vertical is not None else len(img), horizontal
