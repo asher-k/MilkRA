@@ -135,11 +135,15 @@ if __name__ == '__main__':
 
         r = []
         p = []
+        dt_top = []
         for state in nprand.randint(0, 99999, size=args.num_states):
             train_d, test_d, train_l, test_l = train_test_split(data, labels, test_size=0.3, stratify=labels)
-            result, imp = model(train_d, train_l, test_d, test_l, random_state=state)
-            if imp is not None:
-                p.append(imp)
+            result, _imp, _split = model(train_d, train_l, test_d, test_l, random_state=state, verbose=args.verbose,
+                                         feature_names=_col_order(args.type))
+            if _imp is not None:
+                p.append(_imp)
+            if _split is not None:
+                dt_top.append(_split)
             r.append(result)
 
         results = pd.DataFrame(r)
@@ -151,7 +155,7 @@ if __name__ == '__main__':
         results = results.reindex(sorted(results.columns), axis=1)
 
         logging.info(msg="\nPerformance Statistics\n"+str(results)+"\n")
-        save_dir = "{log}/{mod}".format(log=logs_dir, mod=model_name)
+        save_dir = "{log}{mod}".format(log=logs_dir, mod=model_name)
 
         if args.save:  # save results to a csv file
             if not os.path.exists(save_dir):
@@ -162,8 +166,12 @@ if __name__ == '__main__':
                                    only="_"+str(args.load_only) if str(args.load_only) is not None else ""))
 
         if args.save and p:  # format & save feature priorities into a subdirectory
+            # print(save_dir)
+            # exit()
             if not os.path.exists(save_dir+"/importance"):
                 os.mkdir(save_dir+"/importance")
+            if not os.path.exists(save_dir+"/importance/splits/"):
+                os.mkdir(save_dir+"/importance/splits/")
             save_name = "{name}{type}{norm}{avg}{only}".format(name=args.name, save=save_dir, type=args.type,
                                                                norm="_norm" if args.normalize else "",
                                                                avg="_mpmean" if args.centre_avg else "",
@@ -177,3 +185,7 @@ if __name__ == '__main__':
             priority = priority.mean(axis=0).round(decimals=3)
             priority = priority.to_frame().transpose()
             priority.to_csv("{save}/importance/{sn}.csv".format(save=save_dir, sn=save_name))
+
+            # Also save decision tree splits for analysis
+            dt_splits = pd.DataFrame(dt_top, columns=["top_split"])
+            dt_splits.to_csv("{save}/importance/splits/{sn}.csv".format(save=save_dir, sn=save_name))

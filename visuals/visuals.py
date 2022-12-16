@@ -17,6 +17,9 @@ from functools import partial
 reshaped_order = ['edge_4_l', 'edge_3_l', '11l', 'edge_2_l', 'edge_1_l', '10l', '9l', '8l', '7l', '6l', '5l', '4l',
                   '3l', '2l', '1l', 'dl_height_midpoint', '1r', '2r', '3r', '4r', '5r', '6r', '7r', '8r', '9r', '10r',
                   'edge_1_r', 'edge_2_r', '11r', 'edge_3_r', 'edge_4_r']
+processed_order = ['edge_4_r_to_edge_4_l', 'edge_3_r_to_edge_3_l', '11l_to_11r', 'edge_2_r_to_edge_2_l',
+                'edge_1_r_to_edge_1_l', '10l_to_10r', '9l_to_9r', '8l_to_8r', '7l_to_7r', '6l_to_6r', '5l_to_5r',
+                '4l_to_4r', '3l_to_3r', '2l_to_2r', '1l_to_1r', 'dl_height_midpoint']
 
 
 def define_arguments():
@@ -30,8 +33,25 @@ def define_arguments():
     a.add_argument('--metric', default="Accuracy", type=str, help='Name of accuracy metric')
     a.add_argument('--importance', default=False, action=BooleanOptionalAction, help='Export feature import. figures')
     a.add_argument('--covariance', default=False, action=BooleanOptionalAction, help='Export feature covar. figures')
+    a.add_argument('--tree_splits', default=False, action=BooleanOptionalAction, help='Export DT split figure')
     a = a.parse_args()
     return a
+
+
+def _load_and_sort(path, ext, sort=False):
+    """
+    Loads and sorts alphanumerically files from the provided directory.
+
+    :param path: directory to load files
+    :param ext: allowed file extension
+    :param sort: True sorts file names alphanumerically
+    :return:
+    """
+    files = os.listdir(path)
+    files = [file for file in files if ext in file]
+    if sort:
+        files.sort(key=lambda f: int(re.split("[_.]", f)[-2]))
+    return files
 
 
 def load_model_expr(path):
@@ -66,6 +86,23 @@ def load_model_expr_importances(path, processed=False):
     return lines
 
 
+def load_dt_splits(path):
+    """
+    Loads split information from logged decison tree performances
+
+    :param path:
+    :return:
+    """
+    files = _load_and_sort(path, ".csv")
+    _lines = list(reversed([pd.read_csv(path+file).iloc[:, 1:] for file in files]))
+    _lines = pd.concat(_lines, ignore_index=True, axis=1)
+
+    counts = pd.DataFrame([[len([i for i in _lines[col]if i == feat]) for feat in processed_order]
+                           for col in _lines.columns])
+    counts.columns = processed_order
+    return counts
+
+
 def _load_droplet_example_shadow():
     """
     Loads an example droplet evaporation sequence as a shadow for feature importance analysis
@@ -85,6 +122,7 @@ def _time_steps():
 
     :return:
     """
+    # return list(range(0, 910, 10))
     return [0, 25, 50, 75, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900]
 
 
@@ -93,22 +131,6 @@ def f1(data, pre, rec):
     F1 score from precision & recall metrics
     """
     return 2 * ((data[pre]*data[rec])/(data[pre]+data[rec]))
-
-
-def _load_and_sort(path, ext, sort=False):
-    """
-    Loads and sorts alphanumerically files from the provided directory.
-
-    :param path: directory to load files
-    :param ext: allowed file extension
-    :param sort: True sorts file names alphanumerically
-    :return:
-    """
-    files = os.listdir(path)
-    files = [file for file in files if ext in file]
-    if sort:
-        files.sort(key=lambda f: int(re.split("[_.]", f)[-2]))
-    return files
 
 
 def accuracy_plot(mod, names, metric):
@@ -167,6 +189,25 @@ def covar_heatmap(t, mat, mod, r):
     cm = sns.cubehelix_palette(start=.5, rot=-.75, as_cmap=True, reverse=True)
     sns.heatmap(mat[t], xticklabels=[], yticklabels=[], vmin=r[0], vmax=r[1], cmap=cm)
     plt.title("{m} Cov at {T}".format(m=mod, T=str(_time_steps()[t])))
+
+
+def dt_split_bar(t, d, f):
+    """
+    Produces a bar chart of counts of features chosen as the first split point of a Decision Tree
+
+    :param t: indexed timestep to observe bins at
+    :param d: bin count data
+    :param f: figure object
+    :return:
+    """
+    plt.clf()
+    plt.ylim((0, 150))
+    t -= 1
+    cp = sns.barplot(x=processed_order, y=d.iloc[t, :], order=processed_order)
+    cp.set_xticklabels(cp.get_xticklabels(), rotation=90)
+    cp.set(ylabel=None)
+    plt.title("First split at {T}".format(T=str(_time_steps()[t])))
+    f.tight_layout()
 
 
 def write_to_anim(figure, a, f, t, out):
@@ -259,3 +300,13 @@ if __name__ == '__main__':
             fps, time = 1, len(_time_steps())
             gif_name = f'{out_dir}{model}_{args.data}_cov.gif'
             write_to_anim(fig, animate, fps, time, gif_name)
+
+    if args.tree_splits:
+        split_dir = in_dir+"dt/importance/splits/"
+        fig, ax = plt.subplots(figsize=(6.4, 7.2))
+        splits = load_dt_splits(split_dir)
+
+        animate = partial(dt_split_bar, d=splits, f=fig)
+        fps, time = 1, len(_time_steps())
+        gif_name = f'{out_dir}dt_{args.data}_splits.gif'
+        write_to_anim(fig, animate, fps, time, gif_name)
