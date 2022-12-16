@@ -93,12 +93,12 @@ def dtree(x_data, x_labels, y_data, y_labels, **kwargs):
         fig = plt.figure(figsize=(20, 20))
         plot_tree(dt, filled=True, feature_names=kwargs['feature_names'])
         fig.savefig("../output/figures/dt_{ct}.png".format(ct=str(state)))
-
     importance = dt.feature_importances_
     importance = [v for i, v in enumerate(importance)]
 
     top1_split = dt.tree_.feature[0]
-    top1_split = kwargs['feature_names'][top1_split]
+    if not kwargs["only_acc"]:
+        top1_split = kwargs['feature_names'][top1_split]
     return res, importance, top1_split
 
 

@@ -31,6 +31,8 @@ def define_arguments():
     a = ArgumentParser()
     a.add_argument('--data', default="processed", type=str, choices=["processed", "raw"], help='Type of dataset')
     a.add_argument('--metric', default="Accuracy", type=str, help='Name of accuracy metric')
+    a.add_argument('--metric_mode', default="timeseries", choices=["timeseries", "independent"], type=str,
+                   help='Display mode for metric results; timeseries plots a lineplot, independent a scatter')
     a.add_argument('--importance', default=False, action=BooleanOptionalAction, help='Export feature import. figures')
     a.add_argument('--covariance', default=False, action=BooleanOptionalAction, help='Export feature covar. figures')
     a.add_argument('--tree_splits', default=False, action=BooleanOptionalAction, help='Export DT split figure')
@@ -54,18 +56,19 @@ def _load_and_sort(path, ext, sort=False):
     return files
 
 
-def load_model_expr(path):
+def load_model_expr(path, sort=True):
     """
     Loads experiment results from a provided directory
 
     :param path: path to experiment directory
+    :param sort: sort filenames to ensure correct ordering
     :return:
     """
-    files = _load_and_sort(path, ".csv", sort=True)
+    files = _load_and_sort(path, ".csv", sort=sort)
     lines = list(reversed([pd.read_csv(path+file).iloc[:, 1:] for file in files]))
     lines = pd.concat(lines, ignore_index=True)
 
-    lines["Timestep"] = list(reversed(_time_steps()))  # these are hardcoded; remove ASAP
+    lines["Timestep"] = list(reversed(timesteps))
     return lines
 
 
@@ -116,14 +119,17 @@ def _load_droplet_example_shadow():
     return shadow_data
 
 
-def _time_steps():
+def _time_steps(path, timeseries=True):
     """
-    Hardcoded list of observed timestamps; TODO: should be inferred from valid files
+    Infers observed timesteps (and experiments) from observed files.
 
     :return:
     """
-    # return list(range(0, 910, 10))
-    return [0, 25, 50, 75, 100, 150, 200, 300, 400, 500, 600, 700, 800, 900]
+    files = os.listdir(path)
+    files = [f for f in files if ".txt" in f]
+    if timeseries:
+        return [int(re.split("_", f)[-1]) for f in files]
+    return [re.split("_", f)[0] for f in files]
 
 
 def f1(data, pre, rec):
@@ -133,9 +139,9 @@ def f1(data, pre, rec):
     return 2 * ((data[pre]*data[rec])/(data[pre]+data[rec]))
 
 
-def accuracy_plot(mod, names, metric):
+def metric_timeplot(mod, names, metric):
     """
-    Plots the accuracy of the provided model in a line plot
+    Plots the metric of the provided model in a line plot
 
     :return:
     """
@@ -145,6 +151,24 @@ def accuracy_plot(mod, names, metric):
     for m, n in zip(mod, names):
         sns.lineplot(data=m, x="Timestep", y=metric, label=n, alpha=0.7)
     legend = axis.legend(loc='lower right')
+    for line in legend.get_lines():
+        line.set_linewidth(2.0)
+
+
+def metric_lineplot(mod, names, metric):
+    """
+    Plots the metric of the provided model in a non-timeseries lineplot, where each column corresponds to an experiment
+
+    :return:
+    """
+    axis = plt.gca()
+    axis.set_xlim([0, len(timesteps)-1])
+    axis.set_ylim([0.0, 1.0])
+    plt.gcf().set_size_inches(1.4*len(timesteps), 4.8)
+    for m, n in zip(mod, names):
+        s = sns.lineplot(data=m, x="Timestep", y=metric, label=n, alpha=0.7)
+    legend = axis.legend(loc='lower right')
+    plt.gcf().tight_layout()
     for line in legend.get_lines():
         line.set_linewidth(2.0)
 
@@ -161,7 +185,7 @@ def importance_plot(t, data, ref_data, ref_norm, axis):
     axis.set_ylim([0.0, 0.5])
     axis.set_xlim([0, len(importance.columns) - 1])
 
-    ref_time = _time_steps()[t]
+    ref_time = timesteps[t]
     ref_row = ref_data.iloc[ref_time, :]
     ref_row = ref_row.div(ref_norm)
     ref_row = ref_row.to_frame().transpose()
@@ -188,16 +212,15 @@ def covar_heatmap(t, mat, mod, r):
     t -= 1
     cm = sns.cubehelix_palette(start=.5, rot=-.75, as_cmap=True, reverse=True)
     sns.heatmap(mat[t], xticklabels=[], yticklabels=[], vmin=r[0], vmax=r[1], cmap=cm)
-    plt.title("{m} Cov at {T}".format(m=mod, T=str(_time_steps()[t])))
+    plt.title("{m} Cov at {T}".format(m=mod, T=str(timesteps[t])))
 
 
-def dt_split_bar(t, d, f):
+def dt_split_bar(t, d):
     """
     Produces a bar chart of counts of features chosen as the first split point of a Decision Tree
 
     :param t: indexed timestep to observe bins at
     :param d: bin count data
-    :param f: figure object
     :return:
     """
     plt.clf()
@@ -206,8 +229,8 @@ def dt_split_bar(t, d, f):
     cp = sns.barplot(x=processed_order, y=d.iloc[t, :], order=processed_order)
     cp.set_xticklabels(cp.get_xticklabels(), rotation=90)
     cp.set(ylabel=None)
-    plt.title("First split at {T}".format(T=str(_time_steps()[t])))
-    f.tight_layout()
+    plt.title("First split at {T}".format(T=str(timesteps[t])))
+    plt.gcf().tight_layout()
 
 
 def write_to_anim(figure, a, f, t, out):
@@ -257,16 +280,20 @@ if __name__ == '__main__':
     out_dir = "{od}{pref}/".format(od=out_dir, pref=args.data)  # ensure subdirectories also exists
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
+    timesteps = _time_steps(in_dir, args.metric_mode == "timeseries")
 
     # Accuracy figure
     acc_models = []
     for model in folders:   # accuracies
-        ex = load_model_expr(in_dir + model + "/")
+        ex = load_model_expr(in_dir + model + "/", args.metric_mode == "timeseries")
         if "f1" in args.metric:  # manually calculate f1 from precision & recall
             name = re.split("_", args.metric)[0]
             ex[args.metric] = f1(ex, name+"_precision", name+"_recall")
         acc_models.append(ex)
-    accuracy_plot(acc_models, folders, args.metric)
+    if args.metric_mode == "timeseries":
+        metric_timeplot(acc_models, folders, args.metric)
+    else:
+        metric_lineplot(acc_models, folders, args.metric)
     plt.savefig(f'{out_dir}{args.data}_{args.metric}.png')
     plt.clf()
 
@@ -280,7 +307,7 @@ if __name__ == '__main__':
             animate = partial(importance_plot, data=importance, ref_data=shadow, ref_norm=max(shadow.iloc[0, :])*3,
                               axis=ax)
 
-            fps, time = 1, len(_time_steps())
+            fps, time = 1, len(timesteps)
             gif_name = f'{out_dir}{model}_{args.data}_fi.gif'
             write_to_anim(fig, animate, fps, time, gif_name)
 
@@ -297,7 +324,7 @@ if __name__ == '__main__':
             vmin, vmax = min([np.min(c) for c in cvs]), max([np.max(c) for c in cvs])
             animate = partial(covar_heatmap, mat=cvs, mod=model, r=(vmin, vmax))
 
-            fps, time = 1, len(_time_steps())
+            fps, time = 1, len(timesteps)
             gif_name = f'{out_dir}{model}_{args.data}_cov.gif'
             write_to_anim(fig, animate, fps, time, gif_name)
 
@@ -307,6 +334,6 @@ if __name__ == '__main__':
         splits = load_dt_splits(split_dir)
 
         animate = partial(dt_split_bar, d=splits, f=fig)
-        fps, time = 1, len(_time_steps())
+        fps, time = 1, len(timesteps)
         gif_name = f'{out_dir}dt_{args.data}_splits.gif'
         write_to_anim(fig, animate, fps, time, gif_name)

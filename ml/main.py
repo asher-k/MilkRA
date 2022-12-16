@@ -29,12 +29,14 @@ def define_arguments():
     a.add_argument('--name', default='run', type=str, help='Logging directory')
     a.add_argument('--save', default=False, action=BooleanOptionalAction, help='Save performance statistics to a CSV '
                                                                                'in the logging directory')
+    a.add_argument('--only_acc', default=False, action=BooleanOptionalAction, help='Only save direct model outputs')
     a.add_argument('--verbose', default=False, action=BooleanOptionalAction, help='When true print performance '
                                                                                   'statistics to console as well as '
                                                                                   'logging file')
 
     a.add_argument('--model', default='logreg', type=str, help='ML classification model')
     a.add_argument('--load_only', default=None, type=int, help='Only load droplet sequences at the provided timestep')
+    a.add_argument('--load_at', nargs="+", type=int, help='Appends droplet data at these times for dimensionality red.')
     a.add_argument('--centre_avg', default=False, action=BooleanOptionalAction, help='Average centre 3 observations')
     a.add_argument('--normalize', default=False, action=BooleanOptionalAction, help='Normalize droplet heights to the '
                                                                                     'First midpoint observation in '
@@ -80,8 +82,8 @@ def load(data_dir, data_type, **kwargs):
         index_cols = 2 if "processed" in data_type else 4  # depending on raw vs processed, different num of ref. cols.
         [norm_consts.append(s.iloc[0, index_cols]) for s in seqs]  # track normalization constant for each droplet seq.
         seqs = [s[_col_order(data_type)] for s in seqs]  # reshape column orders
-        seqs = [i.iloc[:900, :] for i in seqs] if kwargs['at'] is None \
-            else [i.iloc[kwargs['at'], :] for i in seqs]
+        seqs = [i.iloc[:900, :] for i in seqs] if kwargs['only'] is None else [i.iloc[kwargs['only'], :] for i in seqs]
+        seqs = seqs if kwargs['at'] is None else [i.iloc[kwargs['at'], :] for i in seqs]
 
         if kwargs['centre_avg']:  # get mean over centre 3 observations
             to_avg = ["dl_height_midpoint", "2l_to_2r", "1l_to_1r"]
@@ -104,6 +106,8 @@ if __name__ == '__main__':
     args = define_arguments()
     if args.centre_avg and args.load_only is not None:
         raise ValueError("Simultaneous centre_avg and load_only is unsupported; please run with only one argument.")
+    if args.load_only is not None and args.load_at is not None:
+        raise ValueError("Simultaneous load_at and load_only is unsupported; please run with only one argument.")
     if args.model not in models.keys():
         raise ValueError("Unknown model type {model}".format(model=args.model))
     if not args.save and not args.verbose:
@@ -124,7 +128,8 @@ if __name__ == '__main__':
 
     # load & reformat
     nprand.seed(args.seed)
-    data, labels = load(args.dir, args.type, centre_avg=args.centre_avg, at=args.load_only, normalize=args.normalize)
+    data, labels = load(args.dir, args.type, centre_avg=args.centre_avg, only=args.load_only, at=args.load_at,
+                        normalize=args.normalize)
 
     # execute models
     for model in models[args.model]:
@@ -139,7 +144,7 @@ if __name__ == '__main__':
         for state in nprand.randint(0, 99999, size=args.num_states):
             train_d, test_d, train_l, test_l = train_test_split(data, labels, test_size=0.3, stratify=labels)
             result, _imp, _split = model(train_d, train_l, test_d, test_l, random_state=state, verbose=args.verbose,
-                                         feature_names=_col_order(args.type))
+                                         feature_names=_col_order(args.type), only_acc=args.only_acc)
             if _imp is not None:
                 p.append(_imp)
             if _split is not None:
@@ -165,23 +170,20 @@ if __name__ == '__main__':
                                    norm="_norm" if args.normalize else "", avg="_mpmean" if args.centre_avg else "",
                                    only="_"+str(args.load_only) if str(args.load_only) is not None else ""))
 
-        if args.save and p:  # format & save feature priorities into a subdirectory
-            # print(save_dir)
-            # exit()
+        if args.save and not args.only_acc and p:  # format & save feature priorities into a subdirectory
             if not os.path.exists(save_dir+"/importance"):
                 os.mkdir(save_dir+"/importance")
             if not os.path.exists(save_dir+"/importance/splits/"):
                 os.mkdir(save_dir+"/importance/splits/")
+
             save_name = "{name}{type}{norm}{avg}{only}".format(name=args.name, save=save_dir, type=args.type,
                                                                norm="_norm" if args.normalize else "",
                                                                avg="_mpmean" if args.centre_avg else "",
                                                                only="_"+str(args.load_only) if str(args.load_only) is not None else "")
-
             priority = pd.DataFrame(p, columns=_col_order(args.type))
             priority = priority.abs()
             cvs = np.cov(priority, rowvar=False)
             np.save(save_dir + "/importance/" + save_name + ".npy", cvs)
-
             priority = priority.mean(axis=0).round(decimals=3)
             priority = priority.to_frame().transpose()
             priority.to_csv("{save}/importance/{sn}.csv".format(save=save_dir, sn=save_name))
