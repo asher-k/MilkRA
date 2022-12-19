@@ -1,5 +1,5 @@
 """
-python main.py --type processed --seed 1 --num_states 60 --normalize --save --model
+python main.py --type processed --seed 1 --num_states 60 --normalize --save --model --importance
 """
 import os
 import logging
@@ -8,41 +8,8 @@ import pandas as pd
 import numpy as np
 import numpy.random as nprand
 from argparse import ArgumentParser, BooleanOptionalAction
-from baseline import models
+from baseline import Baselines
 from sklearn.model_selection import train_test_split
-
-
-def define_arguments():
-    """
-    Establishes default model & training/inference parameters.
-
-    :return: default arguments
-    """
-    a = ArgumentParser()
-    a.add_argument('--seed', default=1, type=int, help='Initial seed of random for generating random seeds')
-    a.add_argument('--num_states', default=1, type=int, help='Number of random states to compute model performances at')
-
-    a.add_argument('--dir', default='../data/processed', type=str, help='Path to data folders')
-    a.add_argument('--type', default='processed', type=str, choices=['processed', 'raw'],
-                   help='Observations contain a raw and processed csv file')
-    a.add_argument('--logs_dir', default='../logs/', type=str, help='Logging directory')
-    a.add_argument('--name', default='run', type=str, help='Logging directory')
-    a.add_argument('--save', default=False, action=BooleanOptionalAction, help='Save performance statistics to a CSV '
-                                                                               'in the logging directory')
-    a.add_argument('--only_acc', default=False, action=BooleanOptionalAction, help='Only save direct model outputs')
-    a.add_argument('--verbose', default=False, action=BooleanOptionalAction, help='When true print performance '
-                                                                                  'statistics to console as well as '
-                                                                                  'logging file')
-
-    a.add_argument('--model', default='logreg', type=str, help='ML classification model')
-    a.add_argument('--load_only', default=None, type=int, help='Only load droplet sequences at the provided timestep')
-    a.add_argument('--load_at', nargs="+", type=int, help='Appends droplet data at these times for dimensionality red.')
-    a.add_argument('--centre_avg', default=False, action=BooleanOptionalAction, help='Average centre 3 observations')
-    a.add_argument('--normalize', default=False, action=BooleanOptionalAction, help='Normalize droplet heights to the '
-                                                                                    'First midpoint observation in '
-                                                                                    'the sequence')
-    a = a.parse_args()
-    return a
 
 
 def _col_order(data_type):
@@ -50,7 +17,7 @@ def _col_order(data_type):
     Returns constants representing column orders defined externally by the data
 
     :param data_type: type of data being used: either raw or processed
-    :return:
+    :return: column orders for the corresponding dataset
     """
     if data_type == "processed":
         return ['edge_4_r_to_edge_4_l', 'edge_3_r_to_edge_3_l', '11l_to_11r', 'edge_2_r_to_edge_2_l',
@@ -61,20 +28,112 @@ def _col_order(data_type):
             'edge_2_r', '11r', 'edge_3_r', 'edge_4_r']
 
 
+def define_arguments():
+    """
+    Establishes default model & training/inference parameters.
+
+    :return: default arguments
+    """
+    a = ArgumentParser()
+    a.add_argument(
+        '--seed', default=1, type=int,
+        help='Initial super seed of random for generating random seeds'
+    )
+    a.add_argument(
+        '--num_states', default=1, type=int,
+        help='Number of random states to compute model performances at'
+    )
+    a.add_argument(
+        '--dir', default='../data/processed', type=str,
+        help='Path to data folders'
+    )
+    a.add_argument(
+        '--type', default='processed', type=str, choices=['processed', 'raw'],
+        help='Observations contain a raw and processed csv file'
+    )
+    a.add_argument(
+        '--logs_dir', default='../logs/', type=str,
+        help='Logging directory'
+    )
+    a.add_argument(
+        '--name', default='run', type=str,
+        help='Logging directory'
+    )
+    a.add_argument(
+        '--save', default=False, action=BooleanOptionalAction,
+        help='Save performance statistics to a CSV in the logging directory'
+    )
+    a.add_argument(
+        '--only_acc', default=False, action=BooleanOptionalAction,
+        help='Only save direct model outputs'
+    )
+    a.add_argument(
+        '--verbose', default=False, action=BooleanOptionalAction,
+        help='Print performance statistics to console in addition to the logging file, and enable DT figure export'
+    )
+    a.add_argument(
+        '--importance', default=False, action=BooleanOptionalAction,
+        help='Log feature importances from valid models'
+    )
+    a.add_argument(
+        '--model', default='logreg', type=str,
+        help='ML classification model'
+    )
+    a.add_argument(
+        '--load_only', default=None, type=int,
+        help='Only load droplet sequences at the provided timestep'
+    )
+    a.add_argument(
+        '--load_at', nargs="+", type=int,
+        help='Appends droplet data at these times for dimensionality red.'
+    )
+    a.add_argument(
+        '--centre_avg', default=False, action=BooleanOptionalAction,
+        help='Average centre 3 observations'
+    )
+    a.add_argument(
+        '--normalize', default=False, action=BooleanOptionalAction,
+        help='Normalize droplet heights to the First midpoint observation in the sequence'
+    )
+    a = a.parse_args()
+    return a
+
+
+def format_name(arg, d=None, ext=None):
+    """
+    Produces a formatted file name
+
+    :param arg: command-line arguments used to construct file name
+    :param d: export directory prepended to name
+    :param ext: file extension appended to name
+    :return:
+    """
+    fname = "{save_dir}{name}.{model}.{type}.{norm}.{avg}{only}{ext}"
+    fname = fname.format(
+        save_dir=d,
+        name=arg.name,
+        model=arg.model,
+        type=arg.type,
+        norm="norm" if arg.normalize else "",
+        avg="mpmean." if arg.centre_avg else "",
+        only=""+str(arg.load_only) if str(arg.load_only) is not None else "",
+        ext=ext
+    )
+    return fname
+
+
 def load(data_dir, data_type, **kwargs):
     """
     Loads preprocessed samples of droplet sequences, including
     :return:
     """
-    d = []
-    labs = []
-    norm_consts = []
+    d, labs, norm_consts = [], [], []
     classes = os.listdir(data_dir)
     for c in classes:
-        class_dir = data_dir + "/" + c
+        class_dir = "{d}/{c}".format(d=data_dir, c=c)
         seqs = []
         for f in os.listdir(class_dir+"/"):  # individually load each .csv file
-            file_dir = class_dir+"/"+f+"/"
+            file_dir = "{c}/{f}/".format(c=class_dir, f=f)
             files = os.listdir(file_dir)
             file = list(filter(lambda fl: data_type+".csv" in fl, files))
             file = pd.read_csv(file_dir+file[0])
@@ -103,91 +162,103 @@ def load(data_dir, data_type, **kwargs):
 
 # Delegate mode to correct model, using the provided arguments.
 if __name__ == '__main__':
+    baselines = Baselines()
+
+    # preconditions & warnings
     args = define_arguments()
     if args.centre_avg and args.load_only is not None:
         raise ValueError("Simultaneous centre_avg and load_only is unsupported; please run with only one argument.")
     if args.load_only is not None and args.load_at is not None:
         raise ValueError("Simultaneous load_at and load_only is unsupported; please run with only one argument.")
-    if args.model not in models.keys():
+    if args.model not in baselines.m.keys():
         raise ValueError("Unknown model type {model}".format(model=args.model))
     if not args.save and not args.verbose:
         logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
 
+    # logging initialization
     logs_dir = "{ld}{td}/".format(ld=args.logs_dir, td=args.type)
+    logs_name = format_name(args, d=logs_dir, ext=".txt")
     if not os.path.exists(args.logs_dir):
         os.mkdir(args.logs_dir)
     if not os.path.exists(logs_dir):
         os.mkdir(logs_dir)
-    formatted_name = "{name}_{model}_{type}{norm}{avg}{only}"\
-        .format(name=args.name, model=args.model, type=args.type, norm="_norm" if args.normalize else "",
-                avg="_mpmean"if args.centre_avg else "", only="_"+str(args.load_only) if str(args.load_only) is not None else "")
-    logging.basicConfig(filename=logs_dir+"{name}.txt".format(name=formatted_name), level=logging.DEBUG,
-                        format="%(asctime)s: %(message)s", filemode="w")
+    logging.basicConfig(filename=logs_name,
+                        level=logging.DEBUG,
+                        format="%(asctime)s: %(message)s",
+                        filemode="w")
     if args.verbose:
         logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))  # also print to console
 
-    # load & reformat
+    # load & reformat datasets
     nprand.seed(args.seed)
-    data, labels = load(args.dir, args.type, centre_avg=args.centre_avg, only=args.load_only, at=args.load_at,
+    data, labels = load(args.dir, args.type,
+                        centre_avg=args.centre_avg,
+                        only=args.load_only,
+                        at=args.load_at,
                         normalize=args.normalize)
 
-    # execute models
-    for model in models[args.model]:
-        if args.model == "all":  # can infer model name from model keys
-            model_name = list(models.keys())[models[args.model].index(model)]
+    # execute baseline experiments
+    for model in baselines.m[args.model]:
+        # can infer model name from model keys
+        if args.model == "all":
+            model_name = list(baselines.m.keys())[baselines.m[args.model].index(model)]
         else:
-            model_name = list(models.keys())[list(models.values()).index([model])]
+            model_name = list(baselines.m.keys())[list(baselines.m.values()).index([model])]
 
-        r = []
-        p = []
-        dt_top = []
+        # obtain model results over n seeds
+        r, p, dt_top = [], [], []
         for state in nprand.randint(0, 99999, size=args.num_states):
             train_d, test_d, train_l, test_l = train_test_split(data, labels, test_size=0.3, stratify=labels)
-            result, _imp, _split = model(train_d, train_l, test_d, test_l, random_state=state, verbose=args.verbose,
-                                         feature_names=_col_order(args.type), only_acc=args.only_acc)
-            if _imp is not None:
-                p.append(_imp)
-            if _split is not None:
-                dt_top.append(_split)
+            baselines.data(train_d, train_l, test_d, test_l)
+            result, _imp, _split = model(random_state=state,
+                                         verbose=args.verbose,
+                                         importance=args.importance,
+                                         feature_names=_col_order(args.type),
+                                         only_acc=args.only_acc)
             r.append(result)
+            p.append(_imp)
+            dt_top.append(_split)
 
+        # aggregate seed results & log
         results = pd.DataFrame(r)
         stddevs = results.std()  # light post-run averaging
         results = results.mean(axis=0).round(decimals=3)
-        for col, val in stddevs.iteritems():  # reformatting stddev column names
+        for col, val in stddevs.items():  # reformatting stddev column names
             results[col+"+-"] = val
         results = results.to_frame().transpose()
         results = results.reindex(sorted(results.columns), axis=1)
+        logging.info(msg="\nPerformance Statistics: {mod}\n{res}\n".format(mod=model_name, res=str(results)))
+        save_dir = "{log}{mod}/".format(log=logs_dir, mod=model_name)
 
-        logging.info(msg="\nPerformance Statistics\n"+str(results)+"\n")
-        save_dir = "{log}{mod}".format(log=logs_dir, mod=model_name)
-
-        if args.save:  # save results to a csv file
+        # save raw performance results to a csv file
+        if args.save:
             if not os.path.exists(save_dir):
                 os.mkdir(save_dir)
-            results.to_csv("{save}/{name}{type}{norm}{avg}{only}.csv"
-                           .format(name=args.name, save=save_dir, type=args.type,
-                                   norm="_norm" if args.normalize else "", avg="_mpmean" if args.centre_avg else "",
-                                   only="_"+str(args.load_only) if str(args.load_only) is not None else ""))
+            csv_name = format_name(args, save_dir, ".csv")
+            results.to_csv(csv_name)
 
-        if args.save and not args.only_acc and p:  # format & save feature priorities into a subdirectory
-            if not os.path.exists(save_dir+"/importance"):
-                os.mkdir(save_dir+"/importance")
-            if not os.path.exists(save_dir+"/importance/splits/"):
-                os.mkdir(save_dir+"/importance/splits/")
+        # format & save feature importances into a logging subdirectory
+        if args.save and args.importance and not args.only_acc and model_name in ["logreg", "dt"]:
+            importance_dir = "{sd}importance/".format(sd=save_dir)
+            if not os.path.exists(importance_dir):
+                os.mkdir(importance_dir)
 
-            save_name = "{name}{type}{norm}{avg}{only}".format(name=args.name, save=save_dir, type=args.type,
-                                                               norm="_norm" if args.normalize else "",
-                                                               avg="_mpmean" if args.centre_avg else "",
-                                                               only="_"+str(args.load_only) if str(args.load_only) is not None else "")
             priority = pd.DataFrame(p, columns=_col_order(args.type))
             priority = priority.abs()
             cvs = np.cov(priority, rowvar=False)
-            np.save(save_dir + "/importance/" + save_name + ".npy", cvs)
+            imp_name = format_name(args, importance_dir, ".npy")
+            np.save(imp_name, cvs)
+
             priority = priority.mean(axis=0).round(decimals=3)
             priority = priority.to_frame().transpose()
-            priority.to_csv("{save}/importance/{sn}.csv".format(save=save_dir, sn=save_name))
+            imp_name = format_name(args, importance_dir, ".csv")
+            priority.to_csv(imp_name)
 
             # Also save decision tree splits for analysis
-            dt_splits = pd.DataFrame(dt_top, columns=["top_split"])
-            dt_splits.to_csv("{save}/importance/splits/{sn}.csv".format(save=save_dir, sn=save_name))
+            if model_name == "dt":
+                importance_splits_dir = "{id}splits/".format(id=importance_dir)
+                if not os.path.exists(importance_splits_dir):
+                    os.mkdir(importance_splits_dir)
+                dt_splits = pd.DataFrame(dt_top, columns=["top_split"])
+                imp_name = format_name(args, importance_splits_dir, ".csv")
+                dt_splits.to_csv(imp_name)
