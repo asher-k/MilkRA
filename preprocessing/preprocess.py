@@ -61,21 +61,26 @@ def to_csv(titles, fpath, fname, *data, point_mean=False):
     :return:
     """
     data = [*data]
-    pair_data = data.pop()
-    # Correctly expands value of each PointPair Object
-    [data.extend([p.l_values, p.r_values]) if not point_mean else data.append(p.pair_mean()) for p in pair_data]
+    feats = data[0: 2]
+    data = data[2:]
+    # expands value of each PointPair Object in *data
+    for d in data:
+        if type(d[0]) is PointPair:
+            [feats.extend([p.l_values, p.r_values]) if not point_mean else feats.append(p.pair_mean()) for p in d]
+        else:
+            feats.append(d)  # case for midpoint
 
-    assert len(titles) == len(data)
-    data = pd.DataFrame(list(zip(*data)), columns=titles)
-    data.to_csv(fpath+"/"+fname)
+    assert len(titles) == len(feats)
+    feats = pd.DataFrame(list(zip(*feats)), columns=titles)
+    feats.to_csv(f"{fpath}/{fname}")
 
 
 def update_directories(csvpath, imgpath):
     """
     Creates export directories if they do not exist
 
-    :param csvpath:
-    :param imgpath:
+    :param csvpath: export path of .csv files
+    :param imgpath: export path of annotated images
     :return:
     """
     if not os.path.exists(csvpath):
@@ -143,11 +148,29 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
         p.l_values = [drop.height_average(p.l_index, CONSTS.HEIGHT_RADIUS) for drop in droplets]
         p.r_values = [drop.height_average(p.r_index, CONSTS.HEIGHT_RADIUS) for drop in droplets]
         unprocessed_fearures.extend([p.l_name, p.r_name])
+    to_csv(unprocessed_fearures,
+           csv_exptpath,
+           f"{dataset}_raw.csv",
+           files,
+           [_refl]*len(droplets),
+           [d.wid for d in droplets],
+           [d.hgts[d.mid] for d in droplets],
+           pairs)
 
-    processed_features = [FEATURES[0]] + [FEATURES[3]] + [p.merged_title() for p in pairs]  # Feats for the PROCESSED
-    to_csv(unprocessed_fearures, csv_exptpath, dataset+"_raw.csv", files, [_refl]*len(droplets),
-           [d.wid for d in droplets], [d.hgts[d.mid] for d in droplets], pairs)
-    to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, [d.hgts[d.mid] for d in droplets], pairs,
+    # Features of processed data
+    processed_features = [FEATURES[i] for i in [0, 2]]+[p.merged_title() for p in pairs[0:11]]+[FEATURES[3]] + \
+                         [p.merged_title() for p in pairs[11:13]]+[pairs[0].merged_title()] + \
+                         [p.merged_title() for p in pairs[13:]]  # manual override per Gideon
+    to_csv(processed_features,
+           csv_exptpath,
+           f"{dataset}_processed.csv",
+           files,
+           [d.wid for d in droplets],
+           pairs[0:11],
+           [d.hgts[d.mid] for d in droplets],
+           pairs[11:13],
+           [pairs[0]],
+           pairs[13:],
            point_mean=True)
     print("Exported csv files: ", csv_exptpath+"/"+dataset)
 
@@ -155,8 +178,13 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
         if not os.path.exists(img_exptpath + "/" + dataset):
             os.makedirs(img_exptpath + "/" + dataset)
 
-        annotate_images(images, img_exptpath + "/" + dataset, files, [_refl]*len(droplets), [d.hgts[d.mid] for d in droplets],
-                        [d.mid for d in droplets], [d.l for d in droplets], [d.wid for d in droplets], pairs)
+        annotate_images(images,
+                        f"{img_exptpath}/{dataset}",
+                        files,
+                        [_refl]*len(droplets),
+                        [d.hgts[d.mid] for d in droplets],
+                        [d.mid for d in droplets],
+                        [d.l for d in droplets],
+                        [d.wid for d in droplets],
+                        pairs)
         print("Exported annotations: ", img_exptpath + "/" + dataset)
-
-    # print("\nWarning: Null values were produced for droplet height! Please verify any generated files.\n")
