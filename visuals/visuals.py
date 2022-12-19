@@ -1,5 +1,5 @@
 """
-python visuals.py --data processed --metric Accuracy --importance --covariance
+    python visuals.py --data processed --metric Accuracy --importance --covariance --name
 """
 
 
@@ -14,28 +14,58 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from functools import partial
 
-reshaped_order = ['edge_4_l', 'edge_3_l', '11l', 'edge_2_l', 'edge_1_l', '10l', '9l', '8l', '7l', '6l', '5l', '4l',
-                  '3l', '2l', '1l', 'dl_height_midpoint', '1r', '2r', '3r', '4r', '5r', '6r', '7r', '8r', '9r', '10r',
-                  'edge_1_r', 'edge_2_r', '11r', 'edge_3_r', 'edge_4_r']
-processed_order = ['edge_4_r_to_edge_4_l', 'edge_3_r_to_edge_3_l', '11l_to_11r', 'edge_2_r_to_edge_2_l',
+
+def _col_order(data_type):
+    """
+    Returns constants representing column orders defined externally by the data
+
+    :param data_type: type of data being used: either raw or processed
+    :return: column orders for the corresponding dataset
+    """
+    if data_type == "processed":
+        return ['edge_4_r_to_edge_4_l', 'edge_3_r_to_edge_3_l', '11l_to_11r', 'edge_2_r_to_edge_2_l',
                 'edge_1_r_to_edge_1_l', '10l_to_10r', '9l_to_9r', '8l_to_8r', '7l_to_7r', '6l_to_6r', '5l_to_5r',
                 '4l_to_4r', '3l_to_3r', '2l_to_2r', '1l_to_1r', 'dl_height_midpoint']
+    return ['edge_4_l', 'edge_3_l', '11l', 'edge_2_l', 'edge_1_l', '10l', '9l', '8l', '7l', '6l', '5l', '4l', '3l',
+            '2l', '1l', 'dl_height_midpoint', '1r', '2r', '3r', '4r', '5r', '6r', '7r', '8r', '9r', '10r', 'edge_1_r',
+            'edge_2_r', '11r', 'edge_3_r', 'edge_4_r']
 
 
 def define_arguments():
     """
     Establishes default model & training/inference parameters.
 
-    :return: default arguments
+    :return: parsed argument values
     """
     a = ArgumentParser()
-    a.add_argument('--data', default="processed", type=str, choices=["processed", "raw"], help='Type of dataset')
-    a.add_argument('--metric', default="Accuracy", type=str, help='Name of accuracy metric')
-    a.add_argument('--metric_mode', default="timeseries", choices=["timeseries", "independent"], type=str,
-                   help='Display mode for metric results; timeseries plots a lineplot, independent a scatter')
-    a.add_argument('--importance', default=False, action=BooleanOptionalAction, help='Export feature import. figures')
-    a.add_argument('--covariance', default=False, action=BooleanOptionalAction, help='Export feature covar. figures')
-    a.add_argument('--tree_splits', default=False, action=BooleanOptionalAction, help='Export DT split figure')
+    a.add_argument(
+        '--name', type=str,
+        help='Prefix appended to any generated files'
+    )
+    a.add_argument(
+        '--data', default="processed", type=str, choices=["processed", "raw"],
+        help='Type of dataset'
+    )
+    a.add_argument(
+        '--metric', default="Accuracy", type=str,
+        help='Name of accuracy metric'
+    )
+    a.add_argument(
+        '--metric_mode', default="timeseries", choices=["timeseries", "independent"], type=str,
+        help='Display mode for metric results; timeseries plots a line plot, independent a scatter'
+    )
+    a.add_argument(
+        '--importance', default=False, action=BooleanOptionalAction,
+        help='Export feature import. figures'
+    )
+    a.add_argument(
+        '--covariance', default=False, action=BooleanOptionalAction,
+        help='Export feature covar. figures'
+    )
+    a.add_argument(
+        '--tree_splits', default=False, action=BooleanOptionalAction,
+        help='Export DT split figure'
+    )
     a = a.parse_args()
     return a
 
@@ -100,9 +130,9 @@ def load_dt_splits(path):
     _lines = list(reversed([pd.read_csv(path+file).iloc[:, 1:] for file in files]))
     _lines = pd.concat(_lines, ignore_index=True, axis=1)
 
-    counts = pd.DataFrame([[len([i for i in _lines[col]if i == feat]) for feat in processed_order]
+    counts = pd.DataFrame([[len([i for i in _lines[col]if i == feat]) for feat in _col_order("processed")]
                            for col in _lines.columns])
-    counts.columns = processed_order
+    counts.columns = _col_order("processed")
     return counts
 
 
@@ -115,7 +145,7 @@ def _load_droplet_example_shadow():
     load_dir = "../data/processed/DBM 1000mA Repeats/221121AP/221121AP_raw.csv"
     shadow_data = pd.read_csv(load_dir)
     shadow_data = shadow_data.iloc[:, 4:]
-    shadow_data = shadow_data[reshaped_order]
+    shadow_data = shadow_data[_col_order("raw")]
     return shadow_data
 
 
@@ -128,8 +158,8 @@ def _time_steps(path, timeseries=True):
     files = os.listdir(path)
     files = [f for f in files if ".txt" in f]
     if timeseries:
-        return [int(re.split("_", f)[-1]) for f in files]
-    return [re.split("_", f)[0] for f in files]
+        return [int(re.split("[.]", f)[-2]) for f in files]
+    return [re.split("[.]", f)[0] for f in files]
 
 
 def f1(data, pre, rec):
@@ -226,7 +256,7 @@ def dt_split_bar(t, d):
     plt.clf()
     plt.ylim((0, 150))
     t -= 1
-    cp = sns.barplot(x=processed_order, y=d.iloc[t, :], order=processed_order)
+    cp = sns.barplot(x=_col_order("processed"), y=d.iloc[t, :], order=_col_order("processed"))
     cp.set_xticklabels(cp.get_xticklabels(), rotation=90)
     cp.set(ylabel=None)
     plt.title("First split at {T}".format(T=str(timesteps[t])))
@@ -266,40 +296,36 @@ if __name__ == '__main__':
     }
     sns.set(rc=rc)
 
-    # Setup import & export paths
+    # import & export paths
     args = define_arguments()
     is_processed = True if args.data == "processed" else False
-
     in_dir = "../logs/{pref}/".format(pref=args.data)
     folders = os.listdir(in_dir)
     folders = sorted([f for f in folders if "txt" not in f])
-
-    out_dir = "../output/figures/"
+    out_dir = f"../output/figures/{args.data}/{args.name}/"
     if not os.path.exists(out_dir):
-        os.mkdir(out_dir)
-    out_dir = "{od}{pref}/".format(od=out_dir, pref=args.data)  # ensure subdirectories also exists
-    if not os.path.exists(out_dir):
-        os.mkdir(out_dir)
+        os.makedirs(out_dir)
     timesteps = _time_steps(in_dir, args.metric_mode == "timeseries")
 
-    # Accuracy figure
+    # accuracy figures
     acc_models = []
-    for model in folders:   # accuracies
-        ex = load_model_expr(in_dir + model + "/", args.metric_mode == "timeseries")
+    for model in folders:
+        ex = load_model_expr("{id}{m}/".format(id=in_dir, m=model), args.metric_mode == "timeseries")
         if "f1" in args.metric:  # manually calculate f1 from precision & recall
             name = re.split("_", args.metric)[0]
-            ex[args.metric] = f1(ex, name+"_precision", name+"_recall")
+            ex[args.metric] = f1(ex, f"{name}_precision", f"{name}_recall")
         acc_models.append(ex)
     if args.metric_mode == "timeseries":
         metric_timeplot(acc_models, folders, args.metric)
     else:
         metric_lineplot(acc_models, folders, args.metric)
-    plt.savefig(f'{out_dir}{args.data}_{args.metric}.png')
+    fname = f'{out_dir}{args.name}{args.data}_{args.metric}.png'
+    plt.savefig(fname)
     plt.clf()
 
-    # Importance Figure
+    # feature importance figures
     for model in folders:
-        importance_path = in_dir + model + "/importance/"
+        importance_path = "{id}{m}/importance/".format(id=in_dir, m=model)
         if model in ["dt", "logreg"] and args.importance:
             fig, ax = plt.subplots()
             importance = load_model_expr_importances(importance_path, processed=is_processed)
@@ -311,15 +337,15 @@ if __name__ == '__main__':
             gif_name = f'{out_dir}{model}_{args.data}_fi.gif'
             write_to_anim(fig, animate, fps, time, gif_name)
 
-    # Covariance Figure
+    # Covariance figures
     for model in folders:  # feature covariances
-        importance_path = in_dir + model + "/importance/"
+        importance_path = "{id}{m}/importance/".format(id=in_dir, m=model)
         if model in ["dt", "logreg"] and args.covariance:
             fig, ax = plt.subplots()
             np_files = _load_and_sort(importance_path, ".npy", sort=True)
             cvs = []
             for numpy_file in np_files:
-                cov = np.load(importance_path + numpy_file)
+                cov = np.load(importance_path+numpy_file)
                 cvs.append(cov)
             vmin, vmax = min([np.min(c) for c in cvs]), max([np.max(c) for c in cvs])
             animate = partial(covar_heatmap, mat=cvs, mod=model, r=(vmin, vmax))
@@ -328,8 +354,9 @@ if __name__ == '__main__':
             gif_name = f'{out_dir}{model}_{args.data}_cov.gif'
             write_to_anim(fig, animate, fps, time, gif_name)
 
+    # DT split figure
     if args.tree_splits:
-        split_dir = in_dir+"dt/importance/splits/"
+        split_dir = "{id}dt/importance/splits/".format(id=in_dir)
         fig, ax = plt.subplots(figsize=(6.4, 7.2))
         splits = load_dt_splits(split_dir)
 
