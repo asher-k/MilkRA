@@ -2,14 +2,13 @@ import numpy as np
 
 
 class Constants:
-    def __init__(self):
-        self.REF_DROP_PXL_BORDER = 152  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
-        self.REF_NONDROP = 225  # Minimum value of a BW pixel for it to be considered not part of the droplet (when finding sides)
-        self.REF_RADIUS = 10  # Radius of the search area when attempting to find the reflection line of an image
-        self.REF_THRESH = 2.0  # Maximum difference between each side of the radius for a row to be considered reflected
-        self.MIN_DROP_WIDTH = 100  # Pixel width of a dark region within an image in order to be considered a droplet (removes false-positives)
-        self.REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
-        self.HEIGHT_RADIUS = 10  # Number of columns to each side of a given pixel to average over (enables smoother estimations)
+    REF_DROP_PXL_BORDER = 152  # Maximum value of a BW pixel for it to be considered the droplet (when finding height)
+    REF_NONDROP = 225  # Minimum value of a BW pixel for it to be considered not part of the droplet (when finding sides)
+    REF_RADIUS = 10  # Radius of the search area when attempting to find the reflection line of an image
+    REF_THRESH = 2.0  # Maximum difference between each side of the radius for a row to be considered reflected
+    MIN_DROP_WIDTH = 100  # Pixel width of a dark region within an image in order to be considered a droplet (removes false-positives)
+    REF_LB = 700  # Lower Bound where pixels below are guaranteed to not be part of the Droplet (ie only reflection)
+    HEIGHT_RADIUS = 10  # Number of columns to each side of a given pixel to average over (enables smoother estimations)
 
 
 CONSTS = Constants()

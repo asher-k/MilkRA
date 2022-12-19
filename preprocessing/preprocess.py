@@ -146,7 +146,7 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
 
     processed_features = [FEATURES[0]] + [FEATURES[3]] + [p.merged_title() for p in pairs]  # Feats for the PROCESSED
     to_csv(unprocessed_fearures, csv_exptpath, dataset+"_raw.csv", files, [_refl]*len(droplets),
-           [d.rfl for d in droplets], [d.hgts[d.mid] for d in droplets], pairs)
+           [d.wid for d in droplets], [d.hgts[d.mid] for d in droplets], pairs)
     to_csv(processed_features, csv_exptpath, dataset+"_processed.csv", files, [d.hgts[d.mid] for d in droplets], pairs,
            point_mean=True)
     print("Exported csv files: ", csv_exptpath+"/"+dataset)
