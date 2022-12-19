@@ -51,7 +51,7 @@ def annotate_images(imgs, fpath, fnames, *data):
                 for right in range(ref_line, ref_line - int(r_val), -1):
                     im[right][r_ind] = [255, 255, 0]
 
-        cv2.imwrite(fpath+"/"+name, im)
+        cv2.imwrite(f"{fpath}/{name}", im)
 
 
 def to_csv(titles, fpath, fname, *data, point_mean=False):

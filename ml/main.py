@@ -1,5 +1,5 @@
 """
-python main.py --type processed --seed 1 --num_states 60 --normalize --save --model --importance
+python main.py --type processed --seed 1 --num_states 60 --normalize --save --importance --model
 """
 import os
 import logging
@@ -57,7 +57,7 @@ def define_arguments():
     )
     a.add_argument(
         '--name', default='run', type=str,
-        help='Logging directory'
+        help='Experiment name appended to files'
     )
     a.add_argument(
         '--save', default=False, action=BooleanOptionalAction,
@@ -77,7 +77,7 @@ def define_arguments():
     )
     a.add_argument(
         '--model', default='logreg', type=str,
-        help='ML classification model'
+        help='ML baseline to obtain results on; can be \'all\' to sequentially run all baselines.'
     )
     a.add_argument(
         '--load_only', default=None, type=int,
@@ -127,19 +127,19 @@ def load(data_dir, data_type, **kwargs):
     Loads preprocessed samples of droplet sequences, including
     :return:
     """
-    d, labs, norm_consts = [], [], []
+    x, y, norm_consts = [], [], []
     classes = os.listdir(data_dir)
     for c in classes:
         class_dir = "{d}/{c}".format(d=data_dir, c=c)
-        seqs = []
+        seqs, index_cols = [], []
         for f in os.listdir(class_dir+"/"):  # individually load each .csv file
             file_dir = "{c}/{f}/".format(c=class_dir, f=f)
             files = os.listdir(file_dir)
             file = list(filter(lambda fl: data_type+".csv" in fl, files))
-            file = pd.read_csv(file_dir+file[0])
+            file = pd.read_csv(f"{file_dir}{file[0]}")
+            index_cols.append(file.columns.get_loc("dl_height_midpoint"))
             seqs.append(file)
-        index_cols = 2 if "processed" in data_type else 4  # depending on raw vs processed, different num of ref. cols.
-        [norm_consts.append(s.iloc[0, index_cols]) for s in seqs]  # track normalization constant for each droplet seq.
+        [norm_consts.append(s.iloc[0, i]) for s, i in zip(seqs, index_cols)]
         seqs = [s[_col_order(data_type)] for s in seqs]  # reshape column orders
         seqs = [i.iloc[:900, :] for i in seqs] if kwargs['only'] is None else [i.iloc[kwargs['only'], :] for i in seqs]
         seqs = seqs if kwargs['at'] is None else [i.iloc[kwargs['at'], :] for i in seqs]
@@ -149,15 +149,14 @@ def load(data_dir, data_type, **kwargs):
             for i in seqs:  #
                 i["midpoints_mean"] = i[to_avg].mean(axis=1)
             seqs = [i.drop(to_avg, axis=1) for i in seqs]  # then drop original observations
-
         seqs = [i.to_numpy().flatten() for i in seqs]  # flatten instances
-        d += seqs
-        labs += [c] * len(seqs)
-    d = pd.DataFrame(d)  # then convert back into dataframe
-    d = d.fillna(0)  # 0-imputation
+        x += seqs
+        y += [c] * len(seqs)
+    x = pd.DataFrame(x)  # then convert back into dataframe
+    x = x.fillna(0)  # 0-imputation
     if kwargs['normalize']:
-        d = d.div(norm_consts, axis=0)
-    return d, labs
+        x = x.div(norm_consts, axis=0)
+    return x, y
 
 
 # Delegate mode to correct model, using the provided arguments.

@@ -1,8 +1,6 @@
 """
-    python visuals.py --data processed --metric Accuracy --importance --covariance --name
+python visuals.py --data processed --metric Accuracy --importance --covariance --name
 """
-
-
 import os
 import re
 from argparse import ArgumentParser, BooleanOptionalAction
@@ -29,6 +27,22 @@ def _col_order(data_type):
     return ['edge_4_l', 'edge_3_l', '11l', 'edge_2_l', 'edge_1_l', '10l', '9l', '8l', '7l', '6l', '5l', '4l', '3l',
             '2l', '1l', 'dl_height_midpoint', '1r', '2r', '3r', '4r', '5r', '6r', '7r', '8r', '9r', '10r', 'edge_1_r',
             'edge_2_r', '11r', 'edge_3_r', 'edge_4_r']
+
+
+def _load_and_sort(path, ext, sort=False):
+    """
+    Loads and sorts alphanumerically files from the provided directory.
+
+    :param path: directory to load files
+    :param ext: allowed file extension
+    :param sort: True sorts file names alphanumerically
+    :return:
+    """
+    files = os.listdir(path)
+    files = [file for file in files if ext in file]
+    if sort:
+        files.sort(key=lambda f: int(re.split("[_.]", f)[-2]))
+    return files
 
 
 def define_arguments():
@@ -68,22 +82,6 @@ def define_arguments():
     )
     a = a.parse_args()
     return a
-
-
-def _load_and_sort(path, ext, sort=False):
-    """
-    Loads and sorts alphanumerically files from the provided directory.
-
-    :param path: directory to load files
-    :param ext: allowed file extension
-    :param sort: True sorts file names alphanumerically
-    :return:
-    """
-    files = os.listdir(path)
-    files = [file for file in files if ext in file]
-    if sort:
-        files.sort(key=lambda f: int(re.split("[_.]", f)[-2]))
-    return files
 
 
 def load_model_expr(path, sort=True):

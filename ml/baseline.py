@@ -163,7 +163,7 @@ class Baselines:
 
     def predict_and_results(self, model, **kwargs):
         """
-        Provides general functionalities for the prediction & results of trained models, with keyword enabling specific
+        Provides general functionalities for the prediction & results of trained models, with keywords enabling specific
         functionalities including importance tracking & DT analysis.
 
         :param model: trained ML baseline
