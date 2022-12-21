@@ -1,16 +1,16 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import numpy.random as nprand
+import sklearn.metrics as met
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, roc_auc_score, classification_report
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier, plot_tree
-import matplotlib.pyplot as plt
 
 
-def _results_logging(preds, trues, probs=None, name=None):
+def _results_logging(preds, trues, probs=None, name=None, verbose=False):
     """
     Logs classifier predictions and provides formatted statistics about performance
 
@@ -18,17 +18,21 @@ def _results_logging(preds, trues, probs=None, name=None):
     :param trues: true labels
     :param probs: predicted label probabilities
     :param name: string identifier of model
-    :return: predictive statistics of the model
+    :param verbose: enables logging & confusion matrix
+    :return: [predictive statistics of the model, confusion matrix]
     """
     results = {}
-    results.update({"Accuracy": accuracy_score(trues, preds)})
-    results.update({"ROC AUC": np.NaN if probs is None else roc_auc_score(trues, probs, multi_class="ovo")})
-    class_stats = classification_report(trues, preds, output_dict=True, zero_division=0)
+    results.update({"Accuracy": met.accuracy_score(trues, preds)})
+    results.update({"ROC AUC": np.NaN if probs is None else met.roc_auc_score(trues, probs, multi_class="ovo")})
+    class_stats = met.classification_report(trues, preds, output_dict=True, zero_division=0)
+
+    cm = None
+    if verbose:
+        cm = met.confusion_matrix(trues, preds)
     for var_to_save in ['precision', 'recall']:
-        [results.update({"{i}_{var}".format(i=i, var=var_to_save): class_stats[i][var_to_save]}) for i in class_stats
-         if type(class_stats[i]) is dict]
+        [results.update({"{i}_{var}".format(i=i, var=var_to_save): class_stats[i][var_to_save]}) for i in class_stats if type(class_stats[i]) is dict]
     results = {k: v for k, v in results.items() if "macro" not in k}  # remove duplicated results
-    return results
+    return results, cm
 
 
 def _seed_decorator(func):
@@ -167,14 +171,13 @@ class Baselines:
         functionalities including importance tracking & DT analysis.
 
         :param model: trained ML baseline
-        :return: statistics on model performance, feature coefficients, feature splits
+        :return: statistics on model performance, confusion matrix, feature coefficients, feature splits (DT only)
         """
         preds = model.predict(self.test_x)
         probs = model.predict_proba(self.test_x)
-        res = _results_logging(preds, self.test_y, probs, name=str(type(model)))
+        res, cm = _results_logging(preds, self.test_y, probs, name=str(type(model)), verbose=kwargs['verbose'])
 
-        importance = None
-        splits = None
+        importance, splits = None, None
         if kwargs["importance"]:
             if type(model) is LogisticRegression:
                 importance = model.coef_[0]
@@ -186,4 +189,4 @@ class Baselines:
                 if not kwargs["only_acc"]:
                     splits = kwargs['feature_names'][splits]
 
-        return res, importance, splits
+        return res, cm, importance, splits

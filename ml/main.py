@@ -2,14 +2,17 @@
 python main.py --type processed --seed 1 --num_states 60 --normalize --save --importance --model
 """
 import os
+import re
 import logging
 import sys
 import pandas as pd
 import numpy as np
 import numpy.random as nprand
+import matplotlib.pyplot as plt
 from argparse import ArgumentParser, BooleanOptionalAction
 from baseline import Baselines
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import ConfusionMatrixDisplay
 
 
 def _col_order(data_type):
@@ -26,6 +29,23 @@ def _col_order(data_type):
     return ['edge_4_l', 'edge_3_l', '11l', 'edge_2_l', 'edge_1_l', '10l', '9l', '8l', '7l', '6l', '5l', '4l', '3l',
             '2l', '1l', 'dl_height_midpoint', '1r', '2r', '3r', '4r', '5r', '6r', '7r', '8r', '9r', '10r', 'edge_1_r',
             'edge_2_r', '11r', 'edge_3_r', 'edge_4_r']
+
+
+def _parse_ranges(ranges, split=":"):
+    """
+    Parses user-provided row ranges in --load_ranges
+
+    :param ranges: List of string-formatted ranges
+    :param split: character to split ranges with; assumed to use default ':'
+    :return:
+    """
+    parsed = set()
+    for ur in ranges:
+        s = re.split(split, ur)
+        assert len(s) == 3
+        start, end, step = (int(i) for i in s)
+        parsed.update(set(range(start, end, step)))
+    return sorted(parsed)
 
 
 def define_arguments():
@@ -81,11 +101,23 @@ def define_arguments():
     )
     a.add_argument(
         '--load_only', default=None, type=int,
-        help='Only load droplet sequences at the provided timestep'
+        help='Only load droplet at the given time step'
     )
     a.add_argument(
         '--load_at', nargs="+", type=int,
-        help='Appends droplet data at these times for dimensionality red.'
+        help='Appends droplet data at multiple time steps for dimensionality reduction'
+    )
+    a.add_argument(
+        '--load_ranges', nargs="+", type=str,
+        help='String-formatted ranges representing indicies of steps to use in ML baselines'
+    )
+    a.add_argument(
+        '--features_at', nargs="+", type=int,
+        help='Columns to use for dimensionality reduction; non-indexed columns are dropped prior to training'
+    )
+    a.add_argument(
+        '--features_pca', default=False, action=BooleanOptionalAction,
+        help='Perform PCA on the raw/processed datasets'
     )
     a.add_argument(
         '--centre_avg', default=False, action=BooleanOptionalAction,
@@ -124,8 +156,10 @@ def format_name(arg, d=None, ext=None):
 
 def load(data_dir, data_type, **kwargs):
     """
-    Loads preprocessed samples of droplet sequences, including
-    :return:
+    Loads preprocessed samples of droplet sequences. This involves normalization, feature selection, reshaping etc. per
+    values of **kwargs
+
+    :return: DataFrame dataset, List labels
     """
     x, y, norm_consts = [], [], []
     classes = os.listdir(data_dir)
@@ -137,22 +171,36 @@ def load(data_dir, data_type, **kwargs):
             files = os.listdir(file_dir)
             file = list(filter(lambda fl: data_type+".csv" in fl, files))
             file = pd.read_csv(f"{file_dir}{file[0]}")
-            index_cols.append(file.columns.get_loc("dl_height_midpoint"))
+            index_cols.append(file.columns.get_loc("dl_height_midpoint"))  # track normalization index
             seqs.append(file)
-        [norm_consts.append(s.iloc[0, i]) for s, i in zip(seqs, index_cols)]
-        seqs = [s[_col_order(data_type)] for s in seqs]  # reshape column orders
-        seqs = [i.iloc[:900, :] for i in seqs] if kwargs['only'] is None else [i.iloc[kwargs['only'], :] for i in seqs]
-        seqs = seqs if kwargs['at'] is None else [i.iloc[kwargs['at'], :] for i in seqs]
 
-        if kwargs['centre_avg']:  # get mean over centre 3 observations
+        [norm_consts.append(s.iloc[0, i]) for s, i in zip(seqs, index_cols)]  # update normalization constant
+        seqs = [s[_col_order(data_type)] for s in seqs]  # reshape column orders
+
+        if kwargs['only'] is not None:  # row selection; irrelevant rows are discarded
+            seqs = [i.iloc[kwargs['only'], :] for i in seqs]
+        elif kwargs['at'] is not None:
+            seqs = [i.iloc[kwargs['at'], :] for i in seqs]
+        elif kwargs['ranges'] is not None:
+            ranges = _parse_ranges(kwargs['ranges'])
+            seqs = [i.iloc[ranges, :] for i in seqs]
+        else:
+            seqs = [i.iloc[:900, :] for i in seqs]
+
+        if kwargs['features'] is not None:  # reduce features to indicies
+            seqs = [i.iloc[:, kwargs['features']] for i in seqs]
+
+        if kwargs['centre_avg']:  # get mean over centre 3 observations and drop original observations
             to_avg = ["dl_height_midpoint", "2l_to_2r", "1l_to_1r"]
-            for i in seqs:  #
+            for i in seqs:
                 i["midpoints_mean"] = i[to_avg].mean(axis=1)
-            seqs = [i.drop(to_avg, axis=1) for i in seqs]  # then drop original observations
+            seqs = [i.drop(to_avg, axis=1) for i in seqs]
+
         seqs = [i.to_numpy().flatten() for i in seqs]  # flatten instances
         x += seqs
         y += [c] * len(seqs)
-    x = pd.DataFrame(x)  # then convert back into dataframe
+
+    x = pd.DataFrame(x)
     x = x.fillna(0)  # 0-imputation
     if kwargs['normalize']:
         x = x.div(norm_consts, axis=0)
@@ -168,7 +216,7 @@ if __name__ == '__main__':
     if args.centre_avg and args.load_only is not None:
         raise ValueError("Simultaneous centre_avg and load_only is unsupported; please run with only one argument.")
     if args.load_only is not None and args.load_at is not None:
-        raise ValueError("Simultaneous load_at and load_only is unsupported; please run with only one argument.")
+        logging.warning("Received arguments for load_only and load_at; ignoring --load_at {la}".format(la=args.load_at))
     if args.model not in baselines.m.keys():
         raise ValueError("Unknown model type {model}".format(model=args.model))
     if not args.save and not args.verbose:
@@ -194,6 +242,8 @@ if __name__ == '__main__':
                         centre_avg=args.centre_avg,
                         only=args.load_only,
                         at=args.load_at,
+                        ranges=args.load_ranges,
+                        features=args.features_at,
                         normalize=args.normalize)
 
     # execute baseline experiments
@@ -205,16 +255,17 @@ if __name__ == '__main__':
             model_name = list(baselines.m.keys())[list(baselines.m.values()).index([model])]
 
         # obtain model results over n seeds
-        r, p, dt_top = [], [], []
+        r, cm, p, dt_top = [], [], [], []
         for state in nprand.randint(0, 99999, size=args.num_states):
             train_d, test_d, train_l, test_l = train_test_split(data, labels, test_size=0.3, stratify=labels)
             baselines.data(train_d, train_l, test_d, test_l)
-            result, _imp, _split = model(random_state=state,
-                                         verbose=args.verbose,
-                                         importance=args.importance,
-                                         feature_names=_col_order(args.type),
-                                         only_acc=args.only_acc)
+            result, c, _imp, _split = model(random_state=state,
+                                            verbose=args.verbose,
+                                            importance=args.importance,
+                                            feature_names=_col_order(args.type),
+                                            only_acc=args.only_acc)
             r.append(result)
+            cm.append(c)
             p.append(_imp)
             dt_top.append(_split)
 
@@ -235,6 +286,15 @@ if __name__ == '__main__':
                 os.mkdir(save_dir)
             csv_name = format_name(args, save_dir, ".csv")
             results.to_csv(csv_name)
+
+            if args.verbose:  # aggregate confusion matrix & save to output directory
+                cm = np.sum(cm, axis=0)
+                cm = np.round(cm / np.sum(cm, axis=1), 3)
+                cm_display = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=sorted([l[0:4] for l in set(labels)]))
+                cm_display.plot()
+                fig_name = format_name(args, save_dir, ".png")
+                plt.savefig(fig_name)
+                exit()
 
         # format & save feature importances into a logging subdirectory
         if args.save and args.importance and not args.only_acc and model_name in ["logreg", "dt"]:
