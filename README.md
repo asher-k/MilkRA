@@ -35,7 +35,7 @@ In the ideal scenario (no measurement issues which would require a change of par
 Occassionally scripts may produce errors - this is normal and is often the result of artifact(s) to the side of the droplet. Re-running these troublesome imagesets with `--crop` frequently fixes this issue. Should issues continue to persist, get in touch with Asher (stoutashe@myvuw.ac.nz). Attach the imageset and describe your script settings.
 
 
-### Understanding Generated Files
+### Understanding Extracted Features
 In every run two outputs are always guaranteed in the form of `csv` files. `<name>_raw.csv` contains raw measurements for each point measured, along with other information about the imageset such as the location of the midpoint and reflection lines. `<name>_preprocessed.csv` only contains pairwise means for each measured pair. For a clearer illustration, see the figure below
 
 ![alt text](https://github.com/veryeager/milkra/blob/main/content/README_diagram.png?raw=true)
