@@ -196,6 +196,7 @@ def metric_lineplot(mod, names, metric):
     for m, n in zip(mod, names):
         s = sns.lineplot(data=m, x="Timestep", y=metric, label=n, alpha=0.7)
     legend = axis.legend(loc='lower right')
+    plt.xticks(rotation=20)
     plt.gcf().tight_layout()
     for line in legend.get_lines():
         line.set_linewidth(2.0)
@@ -297,7 +298,7 @@ if __name__ == '__main__':
     # import & export paths
     args = define_arguments()
     is_processed = True if args.data == "processed" else False
-    in_dir = "../logs/{pref}/".format(pref=args.data)
+    in_dir = "../logs/{pref}/".format(pref=args.data, n=args.name)
     folders = os.listdir(in_dir)
     folders = sorted([f for f in folders if "txt" not in f])
     out_dir = f"../output/figures/{args.data}/{args.name}/"

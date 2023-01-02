@@ -122,12 +122,12 @@ class Baselines:
 
         """
         state = kwargs["random_state"]
-        dt = DecisionTreeClassifier(max_features=4,
+        dt = DecisionTreeClassifier(max_features=min(4, len(self.train_x.columns)),
                                     random_state=state)  # min_impurity_split=0.1
         dt.fit(self.train_x, self.train_y)
         if kwargs['verbose']:  # visualization of DT
             fig = plt.figure(figsize=(20, 20))
-            plot_tree(dt, filled=True, feature_names=kwargs['feature_names'])
+            plot_tree(dt, filled=True)
             fig.savefig("../output/figures/dt_{ct}.png".format(ct=state))
         return self.predict_and_results(model=dt, **kwargs)
 
