@@ -1,6 +1,7 @@
 """
 python visuals.py --data processed --metric Accuracy --importance --covariance --name
 """
+import functools
 import os
 import re
 from argparse import ArgumentParser, BooleanOptionalAction
@@ -65,7 +66,7 @@ def define_arguments():
         help='Name of accuracy metric'
     )
     a.add_argument(
-        '--metric_mode', default="timeseries", choices=["timeseries", "independent"], type=str,
+        '--metric_mode', default="timeseries", choices=["timeseries", "independent", "grouped"], type=str,
         help='Display mode for metric results; timeseries plots a line plot, independent a scatter'
     )
     a.add_argument(
@@ -202,6 +203,33 @@ def metric_lineplot(mod, names, metric):
         line.set_linewidth(2.0)
 
 
+def metric_grouped_pointplot(mod, names, metric):
+    """
+    Produces several figures of accuracies & associated errors, grouped by model rather than experiment
+
+    :return:
+    """
+    axis = plt.gca()
+    sns.set(font_scale=1.2)
+
+    cols = mod[0].columns.to_numpy()
+    cols = np.append(cols, "class")
+    group_names = ["dt", "knn", "logreg", "mlp", "nbayes", "svc"]
+    for m, n in zip(mod, group_names):
+        m['class'] = n
+    mod = np.array(mod).reshape((24, 26))
+    mod = pd.DataFrame(mod, columns=cols)
+    print(mod.to_markdown())
+
+    s = sns.catplot(data=mod, kind="bar", x="class", hue="Timestep", y=metric, alpha=0.7)
+    s.legend.remove()
+    s.set(xlabel=None)
+    s.set(ylabel=None)
+    plt.ylim(0.0, 1.0)
+
+    plt.gcf().tight_layout()
+
+
 def importance_plot(t, data, ref_data, ref_norm, axis):
     """
     Plots feature importance of the provided model at the provided timestep, with a shadow of an example droplet behind
@@ -316,8 +344,10 @@ if __name__ == '__main__':
         acc_models.append(ex)
     if args.metric_mode == "timeseries":
         metric_timeplot(acc_models, folders, args.metric)
-    else:
+    elif args.metric_mode == "independent":
         metric_lineplot(acc_models, folders, args.metric)
+    else:
+        metric_grouped_pointplot(acc_models, folders, args.metric)
     fname = f'{out_dir}{args.name}{args.data}_{args.metric}.png'
     plt.savefig(fname)
     plt.clf()

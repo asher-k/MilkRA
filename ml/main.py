@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import sklearn.preprocessing as sklp
 from argparse import ArgumentParser, BooleanOptionalAction
 from baseline import Baselines
-from sklearn.feature_selection import SelectPercentile
+from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import ConfusionMatrixDisplay
 from sklearn.decomposition import PCA
@@ -261,22 +261,22 @@ if __name__ == '__main__':
         else:
             model_name = list(baselines.m.keys())[list(baselines.m.values()).index([model])]
 
+        state_data = data.copy()
+        if args.features_selection == "top":  # since Percentile is deterministic no need to run @ each seed
+            selector = SelectPercentile(percentile=5)
+            selector.fit(state_data, labels)
+            state_data = pd.DataFrame(selector.transform(state_data))
+
         # obtain model results over n seeds
         r, cm, p, dt_top = [], [], [], []  # results, confusion matricies, feature importance, decision tree splits
         for state in nprand.randint(0, 99999, size=args.num_states):
-            state_data = data.copy()
-
-            if args.features_selection == "pca":
+            if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
                 N = 2
                 standardizer = sklp.StandardScaler().fit(state_data)
                 dstd = standardizer.transform(state_data)
                 pca = PCA(random_state=state, n_components=N)  # >0.9 @ 2 PCs
                 state_data = pd.DataFrame(pca.fit_transform(dstd, labels))
                 logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
-            elif args.features_selection == "top":
-                selector = SelectPercentile(percentile=5)
-                selector.fit(state_data, labels)
-                state_data = pd.DataFrame(selector.transform(state_data))
 
             train_d, test_d, train_l, test_l = train_test_split(state_data, labels, test_size=0.3, stratify=labels)
             baselines.data(train_d, train_l, test_d, test_l)
