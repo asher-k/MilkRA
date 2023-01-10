@@ -132,8 +132,7 @@ dmypy.json
 .pyre/
 
 # Project-specific ignores
-logs/
-logs_ts/
+logs/*/
 logs_backup/
 ml/_backup.txt
 *.Rhistory

@@ -263,7 +263,7 @@ if __name__ == '__main__':
 
         state_data = data.copy()
         if args.features_selection == "top":  # since Percentile is deterministic no need to run @ each seed
-            selector = SelectPercentile(percentile=5)
+            selector = SelectPercentile(score_func=mutual_info_classif, percentile=20)
             selector.fit(state_data, labels)
             state_data = pd.DataFrame(selector.transform(state_data))
 
@@ -271,7 +271,7 @@ if __name__ == '__main__':
         r, cm, p, dt_top = [], [], [], []  # results, confusion matricies, feature importance, decision tree splits
         for state in nprand.randint(0, 99999, size=args.num_states):
             if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
-                N = 2
+                N = 5
                 standardizer = sklp.StandardScaler().fit(state_data)
                 dstd = standardizer.transform(state_data)
                 pca = PCA(random_state=state, n_components=N)  # >0.9 @ 2 PCs

@@ -211,13 +211,12 @@ def metric_grouped_pointplot(mod, names, metric):
     """
     axis = plt.gca()
     sns.set(font_scale=1.2)
-
     cols = mod[0].columns.to_numpy()
     cols = np.append(cols, "class")
     group_names = ["dt", "knn", "logreg", "mlp", "nbayes", "svc"]
     for m, n in zip(mod, group_names):
         m['class'] = n
-    mod = np.array(mod).reshape((24, 26))
+    mod = np.array(mod).reshape((24, 26))  # unfortunate hard-coded first argument
     mod = pd.DataFrame(mod, columns=cols)
     print(mod.to_markdown())
 
