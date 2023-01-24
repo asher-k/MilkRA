@@ -268,7 +268,6 @@ if __name__ == '__main__':
         model = cluster.m[args.model][0]
         model = model()
         cluster.dendrogram(model)
-        plt.savefig(f"../output/figures/{args.model}_dendrogram.png")
         plt.clf()
         exit()
 
