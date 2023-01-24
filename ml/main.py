@@ -11,7 +11,7 @@ import numpy.random as nprand
 import matplotlib.pyplot as plt
 import sklearn.preprocessing as sklp
 from argparse import ArgumentParser, BooleanOptionalAction
-from baseline import Baselines
+from baseline import Baselines, Clustering
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import ConfusionMatrixDisplay
@@ -217,6 +217,7 @@ def load(data_dir, data_type, **kwargs):
 # Delegate mode to correct model, using the provided arguments.
 if __name__ == '__main__':
     baselines = Baselines()
+    cluster = Clustering()
 
     # preconditions & warnings
     args = define_arguments()
@@ -226,7 +227,7 @@ if __name__ == '__main__':
         logging.warning("Received arguments for load_only and load_at; ignoring --load_at {la}".format(la=args.load_at))
     if args.features_at is not None and args.features_selection != "none":
         logging.warning("Received arguments for features_at and features_selection; selected features will rely on the subset")
-    if args.model not in baselines.m.keys():
+    if args.model not in list(baselines.m.keys()) + list(cluster.m.keys()):
         raise ValueError("Unknown model type {model}".format(model=args.model))
     if not args.save and not args.verbose:
         logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
@@ -253,7 +254,25 @@ if __name__ == '__main__':
                         features=args.features_at,
                         normalize=args.normalize)
 
-    # execute baseline experiments
+    # execute clustering experiments
+    if args.model not in baselines.m.keys():
+        if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
+            N = 5
+            standardizer = sklp.StandardScaler().fit(data)
+            dstd = standardizer.transform(data)
+            pca = PCA(random_state=args.seed, n_components=N)  # >0.9 @ 2 PCs
+            data = pd.DataFrame(pca.fit_transform(dstd, labels))
+            logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
+
+        cluster.data(data, labels)
+        model = cluster.m[args.model][0]
+        model = model()
+        cluster.dendrogram(model)
+        plt.savefig(f"../output/figures/{args.model}_dendrogram.png")
+        plt.clf()
+        exit()
+
+    # execute classification experiments
     for model in baselines.m[args.model]:
         # can infer model name from model keys
         if args.model == "all":

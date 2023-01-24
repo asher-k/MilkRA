@@ -1,7 +1,10 @@
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 import numpy as np
 import numpy.random as nprand
 import sklearn.metrics as met
+from scipy.cluster.hierarchy import dendrogram
+from sklearn.cluster import AgglomerativeClustering
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
@@ -61,6 +64,69 @@ def _decorate_and_aggregate_models(m):
     return m
 
 
+class Clustering:
+    def __init__(self):
+        self.m = self.models()
+        self.samples = None
+        self.labels = None
+
+    def models(self):
+        """
+        Initializes clustering methods for evaluation
+        """
+        m = {
+            "agglomerative": [self.agglomerative]
+        }
+        return m
+
+    def data(self, d, l):
+        """
+        Updates samples & labels for clustering and plotting functions
+        """
+        self.samples = d
+        self.labels = [lab[:4].strip() for lab in l]  # trim class labels for neatness
+
+    def dendrogram(self, model, **kwargs):
+        """
+        Creates a linkage matrix and plots a dendrogram of the provided model.
+
+        Extended from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html
+        """
+        counts = np.zeros(model.children_.shape[0])
+        n_samples = len(model.labels_)
+        for i, merge in enumerate(model.children_):
+            current_count = 0
+            for child_idx in merge:
+                if child_idx < n_samples:
+                    current_count += 1  # leaf node
+                else:
+                    current_count += counts[child_idx - n_samples]
+            counts[i] = current_count
+
+        linkage_matrix = np.column_stack([model.children_, model.distances_, counts]).astype(float)
+        # Plot the corresponding dendrogram
+        dendrogram(linkage_matrix, **kwargs)
+
+        # extra: colour labels according to class
+        lab_to_col = {"DBM": "mediumblue", "GTM": "forestgreen", "LBM": "dodgerblue", "LBP+": "goldenrod"}
+        ax = plt.gca()
+        xlbls = ax.get_xmajorticklabels()
+        for lbl in xlbls:
+            lbl.set_color(lab_to_col[self.labels[int(lbl.get_text())]])
+
+        patches = [mpatches.Patch(color=v, label=k) for k, v in lab_to_col.items()]
+        ax.legend(handles=patches)
+        plt.show()
+
+    def agglomerative(self, **kwargs):
+        """
+        Agglomerative Hierarchical Clustering
+        """
+        ahc = AgglomerativeClustering(distance_threshold=0, n_clusters=None)
+        ahc.fit(self.samples, self.labels)
+        return ahc
+
+
 class Baselines:
     def __init__(self):
         self.m = self.models()
@@ -71,7 +137,7 @@ class Baselines:
 
     def models(self):
         """
-        Initializes baseline models for evaluation (see Asher for reasoning).
+        Initializes baseline model functions for evaluation (see Asher for hyperparameter reasoning).
         """
         m = {
             "logreg": [self.logreg],
@@ -87,8 +153,6 @@ class Baselines:
     def data(self, tax, tay, tex, tey):
         """
         Updates train & test datasets used by the models
-
-        :return:
         """
         self.train_x = tax
         self.train_y = tay
@@ -98,8 +162,6 @@ class Baselines:
     def logreg(self, **kwargs):
         """
         Logistic Regression model
-
-
         """
         lr = LogisticRegression(random_state=kwargs['random_state'])  # no convergence at iters=100
         lr.fit(self.train_x, self.train_y)
@@ -108,8 +170,6 @@ class Baselines:
     def nbayes(self, **kwargs):
         """
         Naive Bayes model
-
-
         """
         nb = GaussianNB()
         nb.fit(self.train_x, self.train_y)
@@ -118,8 +178,6 @@ class Baselines:
     def dtree(self, **kwargs):
         """
         Decision Tree Classifier
-
-
         """
         state = kwargs["random_state"]
         dt = DecisionTreeClassifier(max_features=min(4, len(self.train_x.columns)),
@@ -134,8 +192,6 @@ class Baselines:
     def knn(self, **kwargs):
         """
         K-Nearest Neighbor algorithm
-
-
         """
         kn = KNeighborsClassifier(n_neighbors=5,
                                   weights='distance')
@@ -145,8 +201,6 @@ class Baselines:
     def svc(self, **kwargs):
         """
         Support Vector Classifier
-
-
         """
         vec = SVC(kernel='rbf', probability=True)
         vec.fit(self.train_x, self.train_y)
@@ -155,8 +209,6 @@ class Baselines:
     def mlp(self, **kwargs):
         """
         Multilayer Perceptron
-
-
         """
         per = MLPClassifier(hidden_layer_sizes=(32, 16, 8),
                             learning_rate='adaptive',
