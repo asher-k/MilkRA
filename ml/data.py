@@ -1,7 +1,28 @@
 import re
-
 import os
+import logging
+
 import pandas as pd
+import sklearn.preprocessing as sklp
+from sklearn.decomposition import PCA
+
+
+def run_pca(data, labels, seed, num_components=5):
+    """
+    Performs PCA on the provided data and labels
+
+    :param data: data to transform
+    :param labels: associated class labels
+    :param seed: emables deterministic results
+    :param num_components: Number of principle components to consider; anything 10 > x > 2 performs well
+    :return:
+    """
+    standardizer = sklp.StandardScaler().fit(data)
+    dstd = standardizer.transform(data)
+    pca = PCA(random_state=seed, n_components=num_components)  # >0.9 @ 2 PCs
+    data = pd.DataFrame(pca.fit_transform(dstd, labels))
+    logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
+    return data
 
 
 def format_name(arg, d=None, ext=None):

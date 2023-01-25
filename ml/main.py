@@ -7,18 +7,12 @@ import sys
 import pandas as pd
 import numpy as np
 import numpy.random as nprand
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import seaborn as sns
-import sklearn.preprocessing as sklp
 from argparse import ArgumentParser, BooleanOptionalAction
 from baseline import Baselines, Clustering
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import ConfusionMatrixDisplay
-from sklearn.decomposition import PCA
-
-from data import format_name, load, _col_order
+from data import format_name, load, _col_order, run_pca
+from plots import samplewise_misclassification_rates, confusion_matrix
 
 
 def define_arguments():
@@ -105,25 +99,33 @@ def define_arguments():
     return a
 
 
+def preconds(a):
+    """
+    Script precondition checks
+    """
+    if a.centre_avg and a.load_only is not None:
+        raise ValueError("Simultaneous centre_avg and load_only is unsupported; please run with only one argument.")
+    if a.load_only is not None and a.load_at is not None:
+        logging.warning("Received arguments for load_only and load_at; ignoring --load_at {la}".format(la=a.load_at))
+    if a.features_at is not None and a.features_selection != "none":
+        logging.warning(
+            "Received arguments for features_at and features_selection; selected features will rely on the subset")
+    if a.model not in list(baselines.m.keys()) + list(clusters.m.keys()) + ["CNN"]:
+        raise ValueError("Unable to delegate model type {model}".format(model=a.model))
+    if not a.save and not a.verbose:
+        logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
+
+
 # Delegate mode to correct model, using the provided arguments.
 if __name__ == '__main__':
     baselines = Baselines()
-    cluster = Clustering()
+    clusters = Clustering()
 
     # preconditions & warnings
     args = define_arguments()
-    if args.centre_avg and args.load_only is not None:
-        raise ValueError("Simultaneous centre_avg and load_only is unsupported; please run with only one argument.")
-    if args.load_only is not None and args.load_at is not None:
-        logging.warning("Received arguments for load_only and load_at; ignoring --load_at {la}".format(la=args.load_at))
-    if args.features_at is not None and args.features_selection != "none":
-        logging.warning("Received arguments for features_at and features_selection; selected features will rely on the subset")
-    if args.model not in list(baselines.m.keys()) + list(cluster.m.keys()):
-        raise ValueError("Unknown model type {model}".format(model=args.model))
-    if not args.save and not args.verbose:
-        logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
+    preconds(args)
 
-    # logging initialization
+    # logging init
     logs_dir = "{ld}{td}/{ed}/".format(ld=args.logs_dir, td=args.type, ed=args.name)
     logs_name = format_name(args, d=logs_dir, ext=".txt")
     if not os.path.exists(logs_dir):
@@ -135,6 +137,7 @@ if __name__ == '__main__':
     if args.verbose:
         logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))  # also print to console
     logging.info("run")
+
     # load & reformat datasets
     nprand.seed(args.seed)
     data, labels = load(args.dir, args.type,
@@ -144,29 +147,27 @@ if __name__ == '__main__':
                         ranges=args.load_ranges,
                         features=args.features_at,
                         normalize=args.normalize)
-    for row in data.index:
+    for row in data.index:  # inits samplewise misclassification counts
         baselines.preddict[row] = (0., 0)
+
+    # Deep Learning Experiments
+    if args.model == "CNN":
+        exit()
 
     # execute clustering experiments
     if args.model not in baselines.m.keys():
         if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
-            N = 5
-            standardizer = sklp.StandardScaler().fit(data)
-            dstd = standardizer.transform(data)
-            pca = PCA(random_state=args.seed, n_components=N)  # >0.9 @ 2 PCs
-            data = pd.DataFrame(pca.fit_transform(dstd, labels))
-            logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
+            data = run_pca()
 
-        cluster.data(data, labels)
-        model = cluster.m[args.model][0]
+        clusters.data(data, labels)
+        model = clusters.m[args.model][0]
         model = model()
-        cluster.dendrogram(model)
-        plt.clf()
+        clusters.dendrogram(model)
         exit()
 
     # execute classification experiments
     for model in baselines.m[args.model]:
-        # can infer model name from model keys
+        # can infer model name from baseline classifier keys
         if args.model == "all":
             model_name = list(baselines.m.keys())[baselines.m[args.model].index(model)]
         else:
@@ -182,12 +183,7 @@ if __name__ == '__main__':
         r, cm, p, dt_top = [], [], [], []  # results, confusion matricies, feature importance, decision tree splits
         for state in nprand.randint(0, 99999, size=args.num_states):
             if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
-                N = 5
-                standardizer = sklp.StandardScaler().fit(state_data)
-                dstd = standardizer.transform(state_data)
-                pca = PCA(random_state=state, n_components=N)  # >0.9 @ 2 PCs
-                state_data = pd.DataFrame(pca.fit_transform(dstd, labels))
-                logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
+                state_data = run_pca(state_data, labels, state)
 
             train_d, test_d, train_l, test_l = train_test_split(state_data, labels, test_size=0.3, stratify=labels)
             baselines.data(train_d, train_l, test_d, test_l)
@@ -196,34 +192,10 @@ if __name__ == '__main__':
                                             importance=args.importance,
                                             feature_names=_col_order(args.type),
                                             only_acc=args.only_acc)
-            r.append(result)
-            cm.append(c)
-            p.append(_imp)
-            dt_top.append(_split)
+            for tr, re in zip([r, cm, p, dt_top], [result, c, _imp, _split]):
+                tr.append(re)
 
-        # Plot sample-wise misclassification rates
-        misc_rates = {str(k): round(v[0]/v[1], 3) for k, v in baselines.preddict.items()}
-        misc_rates = pd.DataFrame(misc_rates.items(), columns=['id', 'misc']).sort_values('misc', ascending=False)
-        misc_rates = misc_rates.loc[:][:22]
-        misc_rates.reset_index(drop=True, inplace=True)
-        lab_to_col = {"DBM": "mediumblue", "GTM": "forestgreen", "LBM": "dodgerblue", "LBP+": "goldenrod"}
-        colors = [lab_to_col[labels[int(i)][:4].strip()] for i in misc_rates['id']]
-        sns.set_context('paper')
-        f, ax = plt.subplots(figsize=(6, 15))
-        plt.xlim(0.0, 1.0)
-        sns.set_color_codes('pastel')
-        sns.barplot(x='misc', y='id', data=misc_rates, palette=colors, edgecolor='w')
-        sns.despine(left=True, bottom=True)
-        plt.xlabel("Misclassification Rate")
-        plt.ylabel("Index")
-        ax = plt.gca()
-        for i in ax.containers:
-            ax.bar_label(i, )
-        patches = [mpatches.Patch(color=v, label=k) for k, v in lab_to_col.items()]
-        ax.legend(handles=patches, loc='lower right')
-        plt.show()
-
-        # aggregate seed results & log
+        # aggregate results over all seeds & log it!
         results = pd.DataFrame(r)
         stddevs = results.std()  # light post-run averaging
         results = results.mean(axis=0).round(decimals=3)
@@ -234,44 +206,39 @@ if __name__ == '__main__':
         logging.info(msg="\nPerformance Statistics: {mod}\n{res}\n".format(mod=model_name, res=str(results)))
         save_dir = "{log}{mod}/".format(log=logs_dir, mod=model_name)
 
-        # save raw performance results to a csv file
+        # save performance results to csv file(s) with any produced plots
         if args.save:
             if not os.path.exists(save_dir):
                 os.mkdir(save_dir)
             csv_name = format_name(args, save_dir, ".csv")
             results.to_csv(csv_name)
 
-            if args.verbose:  # aggregate confusion matrix & save to output directory
-                plt.clf()
-                cm = np.sum(cm, axis=0)
-                cm = np.round(cm / np.sum(cm, axis=1), 3)
-                cm_display = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=sorted([l[0:4] for l in set(labels)]))
-                cm_display.plot()
-                fig_name = format_name(args, save_dir, f"_{model_name}.png")
-                plt.savefig(fig_name)
+            if args.verbose:  # aggregate confusion matrix & misclassification rate figures & save to output directory
+                samplewise_misclassification_rates(baselines, labels, args, save_dir, model_name)
+                confusion_matrix(cm, labels, args, save_dir, model_name)
 
-        # format & save feature importances into a logging subdirectory
-        if args.save and args.importance and not args.only_acc and model_name in ["logreg", "dt"]:
-            importance_dir = "{sd}importance/".format(sd=save_dir)
-            if not os.path.exists(importance_dir):
-                os.mkdir(importance_dir)
+            # format & save feature importances into a logging subdirectory
+            if args.importance and not args.only_acc and model_name in ["logreg", "dt"]:
+                importance_dir = "{sd}importance/".format(sd=save_dir)
+                if not os.path.exists(importance_dir):
+                    os.mkdir(importance_dir)
 
-            priority = pd.DataFrame(p, columns=_col_order(args.type))
-            priority = priority.abs()
-            cvs = np.cov(priority, rowvar=False)
-            imp_name = format_name(args, importance_dir, ".npy")
-            np.save(imp_name, cvs)
+                priority = pd.DataFrame(p, columns=_col_order(args.type))
+                priority = priority.abs()
+                cvs = np.cov(priority, rowvar=False)
+                imp_name = format_name(args, importance_dir, ".npy")
+                np.save(imp_name, cvs)
 
-            priority = priority.mean(axis=0).round(decimals=3)
-            priority = priority.to_frame().transpose()
-            imp_name = format_name(args, importance_dir, ".csv")
-            priority.to_csv(imp_name)
+                priority = priority.mean(axis=0).round(decimals=3).to_frame().transpose()
+                priority = priority.to_frame().transpose()
+                imp_name = format_name(args, importance_dir, ".csv")
+                priority.to_csv(imp_name)
 
-            # Also save decision tree splits for analysis
-            if model_name == "dt":
-                importance_splits_dir = "{id}splits/".format(id=importance_dir)
-                if not os.path.exists(importance_splits_dir):
-                    os.mkdir(importance_splits_dir)
-                dt_splits = pd.DataFrame(dt_top, columns=["top_split"])
-                imp_name = format_name(args, importance_splits_dir, ".csv")
-                dt_splits.to_csv(imp_name)
+                # Also save decision tree splits for analysis
+                if model_name == "dt":
+                    importance_splits_dir = "{id}splits/".format(id=importance_dir)
+                    if not os.path.exists(importance_splits_dir):
+                        os.mkdir(importance_splits_dir)
+                    dt_splits = pd.DataFrame(dt_top, columns=["top_split"])
+                    imp_name = format_name(args, importance_splits_dir, ".csv")
+                    dt_splits.to_csv(imp_name)
