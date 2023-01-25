@@ -32,7 +32,7 @@ To ensure height measurements are correct it is recommended to run the script wi
 In the ideal scenario (no measurement issues which would require a change of parameters & a re-run) an imageset only needs to be run once to obtain the .csv files. However, with `--annotate` and `--crop` the imageset is effectively copied twice in local storage. Therefore after an imageset has been processed without error it is strongly recommended that the `cropped/` and `output/annotations` directories are cleared.
 
 ### Troubleshooting
-Occassionally scripts may produce errors - this is normal and is often the result of artifact(s) to the side of the droplet. Re-running these troublesome imagesets with `--crop` frequently fixes this issue. Should issues continue to persist, get in touch with Asher (stoutashe@myvuw.ac.nz). Attach the imageset and describe your script settings.
+Occassionally scripts may produce errors - this is normal and is often the result of artifact(s) to the side of the droplet. Re-running these troublesome imagesets with `--crop` frequently fixes this issue. Should issues continue to persist, get in touch with Asher. Attach the imageset and describe your script settings.
 
 
 ### Understanding Extracted Features
