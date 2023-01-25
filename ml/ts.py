@@ -19,7 +19,7 @@ from sktime.transformations.panel.compose import ColumnConcatenator
 from sktime.classification.hybrid import HIVECOTEV2
 
 from baseline import _decorate_and_aggregate_models, _results_logging
-from main import _col_order
+from data import _col_order
 
 
 class TSModels:

@@ -9,4 +9,5 @@ class CNN(nn.Module):
         super().__init__()
 
     def forward(self, x):
+        x = nn.Linear(len(x))
         return x
