@@ -134,6 +134,7 @@ class Baselines:
         self.train_y = None
         self.test_x = None
         self.test_y = None
+        self.preddict = {}
 
     def models(self):
         """
@@ -240,5 +241,10 @@ class Baselines:
                 splits = model.tree_.feature[0]
                 if not kwargs["only_acc"]:
                     splits = kwargs['feature_names'][splits]
+
+        # track raw misclassification rates of each sample
+        for i, x in enumerate(self.test_x.index):
+            ext = (0., 1) if preds[i] == self.test_y[i] else (1., 1)
+            self.preddict[x] = tuple(sum(tup) for tup in zip(ext, self.preddict[x]))
 
         return res, cm, importance, splits

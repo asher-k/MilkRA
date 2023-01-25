@@ -9,6 +9,8 @@ import pandas as pd
 import numpy as np
 import numpy.random as nprand
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import seaborn as sns
 import sklearn.preprocessing as sklp
 from argparse import ArgumentParser, BooleanOptionalAction
 from baseline import Baselines, Clustering
@@ -253,6 +255,8 @@ if __name__ == '__main__':
                         ranges=args.load_ranges,
                         features=args.features_at,
                         normalize=args.normalize)
+    for row in data.index:
+        baselines.preddict[row] = (0., 0)
 
     # execute clustering experiments
     if args.model not in baselines.m.keys():
@@ -307,6 +311,27 @@ if __name__ == '__main__':
             cm.append(c)
             p.append(_imp)
             dt_top.append(_split)
+
+        # Plot sample-wise misclassification rates
+        misc_rates = {str(k): round(v[0]/v[1], 3) for k, v in baselines.preddict.items()}
+        misc_rates = pd.DataFrame(misc_rates.items(), columns=['id', 'misc']).sort_values('misc', ascending=False)
+        misc_rates = misc_rates.loc[:][:22]
+        misc_rates.reset_index(drop=True, inplace=True)
+        lab_to_col = {"DBM": "mediumblue", "GTM": "forestgreen", "LBM": "dodgerblue", "LBP+": "goldenrod"}
+        colors = [lab_to_col[labels[int(i)][:4].strip()] for i in misc_rates['id']]
+        sns.set_context('paper')
+        f, ax = plt.subplots(figsize=(6, 15))
+        sns.set_color_codes('pastel')
+        sns.barplot(x='misc', y='id', data=misc_rates, palette=colors, edgecolor='w')
+        sns.despine(left=True, bottom=True)
+        plt.xlabel("Misclassification Rate")
+        plt.ylabel("Index")
+        ax = plt.gca()
+        for i in ax.containers:
+            ax.bar_label(i, )
+        patches = [mpatches.Patch(color=v, label=k) for k, v in lab_to_col.items()]
+        ax.legend(handles=patches)
+        plt.show()
 
         # aggregate seed results & log
         results = pd.DataFrame(r)
