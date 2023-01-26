@@ -3,7 +3,7 @@ import torch.nn as nn
 
 class CNN(nn.Module):
     """
-    Baseline CNN (as an intermediary between MLP & Transformer)
+    Baseline CNN (as an intermediary between MLP & Transformer) using LeNet architecture
     """
     def __init__(self, num_classes):
         super(CNN, self).__init__()
@@ -21,7 +21,19 @@ class CNN(nn.Module):
         self.dense2 = nn.Linear(in_features=500, out_features=num_classes)
         self.softmax = nn.LogSoftmax(dim=1)
 
-
     def forward(self, x):
-        x = nn.Linear(len(x))
-        return x
+        x = self.conv1(x)
+        x = self.relu1(x)
+        x = self.mpool1(x)
+
+        x = self.conv2(x)
+        x = self.relu2(x)
+        x = self.mpool2(x)
+
+        x = nn.Flatten(x, 1)
+        x = self.dense1(x)
+        x = self.relu3(x)
+
+        x = self.dense2(x)
+        predictions = self.softmax(x)
+        return predictions

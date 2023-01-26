@@ -1,18 +1,14 @@
 """
-python main.py --type processed --seed 1 --num_states 60 --normalize --save --importance --model
+python main.py --type processed --seed 1 --num_states 60 --save --experiment EXP --model MOD --name NAM --verbose
 """
 import os
 import logging
 import sys
-import pandas as pd
-import numpy as np
 import numpy.random as nprand
+import experiments as exp
+
 from argparse import ArgumentParser, BooleanOptionalAction
-from baseline import Baselines, Clustering
-from sklearn.feature_selection import SelectPercentile, mutual_info_classif
-from sklearn.model_selection import train_test_split
-from data import format_name, load, _col_order, run_pca
-from plots import samplewise_misclassification_rates, confusion_matrix
+from data import format_name, load
 
 
 def define_arguments():
@@ -63,6 +59,11 @@ def define_arguments():
         help='Log feature importances from valid models'
     )
     a.add_argument(
+        '--experiment', default='classify:baseline', type=str,
+        choices=["classify:baseline", "classify:dl", "classify:ts", "cluster"],
+        help='Experiment to perform; assumes the model chosen is relevant for it'
+    )
+    a.add_argument(
         '--model', default='logreg', type=str,
         help='ML baseline to obtain results on; can be \'all\' to sequentially run all baselines.'
     )
@@ -99,7 +100,7 @@ def define_arguments():
     return a
 
 
-def preconds(a):
+def preconditions(a):
     """
     Script precondition checks
     """
@@ -110,20 +111,14 @@ def preconds(a):
     if a.features_at is not None and a.features_selection != "none":
         logging.warning(
             "Received arguments for features_at and features_selection; selected features will rely on the subset")
-    if a.model not in list(baselines.m.keys()) + list(clusters.m.keys()) + ["CNN"]:
-        raise ValueError("Unable to delegate model type {model}".format(model=a.model))
     if not a.save and not a.verbose:
         logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
 
 
 # Delegate mode to correct model, using the provided arguments.
 if __name__ == '__main__':
-    baselines = Baselines()
-    clusters = Clustering()
-
-    # preconditions & warnings
     args = define_arguments()
-    preconds(args)
+    preconditions(args)
 
     # logging init
     logs_dir = "{ld}{td}/{ed}/".format(ld=args.logs_dir, td=args.type, ed=args.name)
@@ -136,7 +131,7 @@ if __name__ == '__main__':
                         filemode="w")
     if args.verbose:
         logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))  # also print to console
-    logging.info("run")
+    logging.info("Starting Preprocessing...")
 
     # load & reformat datasets
     nprand.seed(args.seed)
@@ -146,99 +141,18 @@ if __name__ == '__main__':
                         at=args.load_at,
                         ranges=args.load_ranges,
                         features=args.features_at,
-                        normalize=args.normalize)
-    for row in data.index:  # inits samplewise misclassification counts
-        baselines.preddict[row] = (0., 0)
+                        normalize=args.normalize,
+                        ts=True if "ts" in args.experiment else False)
 
-    # Deep Learning Experiments
-    if args.model == "CNN":
-        exit()
-
-    # execute clustering experiments
-    if args.model not in baselines.m.keys():
-        if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
-            data = run_pca()
-
-        clusters.data(data, labels)
-        model = clusters.m[args.model][0]
-        model = model()
-        clusters.dendrogram(model)
-        exit()
-
-    # execute classification experiments
-    for model in baselines.m[args.model]:
-        # can infer model name from baseline classifier keys
-        if args.model == "all":
-            model_name = list(baselines.m.keys())[baselines.m[args.model].index(model)]
-        else:
-            model_name = list(baselines.m.keys())[list(baselines.m.values()).index([model])]
-
-        state_data = data.copy()
-        if args.features_selection == "top":  # since Percentile is deterministic no need to run @ each seed
-            selector = SelectPercentile(score_func=mutual_info_classif, percentile=20)
-            selector.fit(state_data, labels)
-            state_data = pd.DataFrame(selector.transform(state_data))
-
-        # obtain model results over n seeds
-        r, cm, p, dt_top = [], [], [], []  # results, confusion matricies, feature importance, decision tree splits
-        for state in nprand.randint(0, 99999, size=args.num_states):
-            if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
-                state_data = run_pca(state_data, labels, state)
-
-            train_d, test_d, train_l, test_l = train_test_split(state_data, labels, test_size=0.3, stratify=labels)
-            baselines.data(train_d, train_l, test_d, test_l)
-            result, c, _imp, _split = model(random_state=state,
-                                            verbose=args.verbose,
-                                            importance=args.importance,
-                                            feature_names=_col_order(args.type),
-                                            only_acc=args.only_acc)
-            for tr, re in zip([r, cm, p, dt_top], [result, c, _imp, _split]):
-                tr.append(re)
-
-        # aggregate results over all seeds & log it!
-        results = pd.DataFrame(r)
-        stddevs = results.std()  # light post-run averaging
-        results = results.mean(axis=0).round(decimals=3)
-        for col, val in stddevs.items():  # reformatting stddev column names
-            results[col+"+-"] = val
-        results = results.to_frame().transpose()
-        results = results.reindex(sorted(results.columns), axis=1)
-        logging.info(msg="\nPerformance Statistics: {mod}\n{res}\n".format(mod=model_name, res=str(results)))
-        save_dir = "{log}{mod}/".format(log=logs_dir, mod=model_name)
-
-        # save performance results to csv file(s) with any produced plots
-        if args.save:
-            if not os.path.exists(save_dir):
-                os.mkdir(save_dir)
-            csv_name = format_name(args, save_dir, ".csv")
-            results.to_csv(csv_name)
-
-            if args.verbose:  # aggregate confusion matrix & misclassification rate figures & save to output directory
-                samplewise_misclassification_rates(baselines, labels, args, save_dir, model_name)
-                confusion_matrix(cm, labels, args, save_dir, model_name)
-
-            # format & save feature importances into a logging subdirectory
-            if args.importance and not args.only_acc and model_name in ["logreg", "dt"]:
-                importance_dir = "{sd}importance/".format(sd=save_dir)
-                if not os.path.exists(importance_dir):
-                    os.mkdir(importance_dir)
-
-                priority = pd.DataFrame(p, columns=_col_order(args.type))
-                priority = priority.abs()
-                cvs = np.cov(priority, rowvar=False)
-                imp_name = format_name(args, importance_dir, ".npy")
-                np.save(imp_name, cvs)
-
-                priority = priority.mean(axis=0).round(decimals=3).to_frame().transpose()
-                priority = priority.to_frame().transpose()
-                imp_name = format_name(args, importance_dir, ".csv")
-                priority.to_csv(imp_name)
-
-                # Also save decision tree splits for analysis
-                if model_name == "dt":
-                    importance_splits_dir = "{id}splits/".format(id=importance_dir)
-                    if not os.path.exists(importance_splits_dir):
-                        os.mkdir(importance_splits_dir)
-                    dt_splits = pd.DataFrame(dt_top, columns=["top_split"])
-                    imp_name = format_name(args, importance_splits_dir, ".csv")
-                    dt_splits.to_csv(imp_name)
+    # delegate to experiment script
+    logging.info(f"Delegating: {args.experiment}, {args.model}")
+    if args.experiment == "classify:baseline":
+        exp.classify_baselines(args, data, labels, logs_dir)
+    elif args.experiment == "classify:dl":
+        exp.classify_dl(args, data, labels)
+    elif args.experiment == "classify:ts":
+        exp.classify_ts(args, data, labels)
+    elif args.experiment == "cluster":
+        exp.clustering(args, data, labels)
+    else:
+        raise ValueError("Unable to delegate experiment type {exp}".format(exp=args.experiment))

@@ -2,6 +2,7 @@ import re
 import os
 import logging
 
+import numpy as np
 import pandas as pd
 import sklearn.preprocessing as sklp
 from sklearn.decomposition import PCA
@@ -83,25 +84,33 @@ def load(data_dir, data_type, **kwargs):
 
         if kwargs['features'] is not None:  # reduce features to indicies
             seqs = [i.iloc[:, kwargs['features']] for i in seqs]
-
         if kwargs['centre_avg']:  # get mean over centre 3 observations and drop original observations
             to_avg = ["dl_height_midpoint", "2l_to_2r", "1l_to_1r"]
             for i in seqs:
                 i["midpoints_mean"] = i[to_avg].mean(axis=1)
             seqs = [i.drop(to_avg, axis=1) for i in seqs]
 
-        seqs = [i.to_numpy().flatten() for i in seqs]  # flatten instances
+        if not kwargs['ts']:
+            seqs = [i.to_numpy().flatten() for i in seqs]  # flatten instances in the non time-series case
         x += seqs
         y += [c] * len(seqs)
 
-    x = pd.DataFrame(x)
-    x = x.fillna(0)  # 0-imputation
-
-    if kwargs['normalize'] == "max":
-        x = x.div(norm_consts, axis=0)
-    elif kwargs['normalize'] == "const":
-        x = x.div(1000, axis=0)
-    return x, y
+    # Different formatting for time-series & non-ts data
+    if kwargs['ts']:
+        x = [pd.DataFrame(i) for i in x]
+        for e, i in enumerate(x):
+            i = i.fillna(0)  # 0-imputation
+            if kwargs['normalize']:
+                x[e] = i.div(norm_consts[e], axis=0)
+        return np.array([i.transpose().to_numpy() for i in x]), np.array(y)
+    else:
+        x = pd.DataFrame(x)
+        x = x.fillna(0)  # 0-imputation
+        if kwargs['normalize'] == "max":
+            x = x.div(norm_consts, axis=0)
+        elif kwargs['normalize'] == "const":
+            x = x.div(1000, axis=0)
+        return x, y
 
 
 def _col_order(data_type):

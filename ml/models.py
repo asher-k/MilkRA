@@ -3,14 +3,23 @@ import matplotlib.patches as mpatches
 import numpy as np
 import numpy.random as nprand
 import sklearn.metrics as met
+
 from scipy.cluster.hierarchy import dendrogram
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.neural_network import MLPClassifier
+from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sktime.classification.distance_based import KNeighborsTimeSeriesClassifier
+from sktime.classification.interval_based import TimeSeriesForestClassifier
+from sktime.classification.dictionary_based import TemporalDictionaryEnsemble
+from sktime.classification.interval_based import RandomIntervalSpectralEnsemble
+from sktime.classification.shapelet_based import ShapeletTransformClassifier
+from sktime.transformations.panel.compose import ColumnConcatenator
+from sktime.classification.hybrid import HIVECOTEV2
 
 
 def _results_logging(preds, trues, probs=None, name=None, verbose=False):
@@ -248,3 +257,110 @@ class Baselines:
             self.preddict[x] = tuple(sum(tup) for tup in zip(ext, self.preddict[x]))
 
         return res, cm, importance, splits
+
+
+class TSModels:
+    def __init__(self):
+        self.m = self.models()
+        self.train_x = None
+        self.train_y = None
+        self.test_x = None
+        self.test_y = None
+
+    def models(self):
+        """
+        Initializes dict of time-series models for streamlined testing.
+        """
+        m = {"knn": [self.KNN],
+             "forest": [self.Forest],
+             "tde": [self.tde],
+             "rise": [self.rise],
+             "shapelet": [self.shapelet],
+             "hive": [self.hivecote],
+             }
+        m = _decorate_and_aggregate_models(m)
+        return m
+
+    def data(self, tax, tay, tex, tey):
+        """
+        Updates train & test datasets used by the models
+
+        :return:
+        """
+        self.train_x = tax
+        self.train_y = tay
+        self.test_x = tex
+        self.test_y = tey
+
+    def KNN(self, **kwargs):
+        """
+        K-Nearest Neighbors Time-series Classifier
+        """
+        knn = KNeighborsTimeSeriesClassifier(n_neighbors=5)
+        knn.fit(self.train_x, self.train_y)
+        return self.predict_and_results(mod=knn, **kwargs)
+
+    def Forest(self, **kwargs):
+        """
+        Time-Series Forest Classifier
+        """
+        steps = [
+            ("concatenate", ColumnConcatenator()),  # TSF requires concatenation of columns
+            ("classify", TimeSeriesForestClassifier(n_estimators=100, random_state=kwargs["random_state"], n_jobs=-1)),
+        ]
+        tsf = Pipeline(steps)
+
+        tsf.fit(self.train_x, self.train_y)
+        return self.predict_and_results(mod=tsf, **kwargs)
+
+    def tde(self, **kwargs):
+        """
+        Temporal Dictionary Ensemble (BOSS) classifier
+        """
+        cb = TemporalDictionaryEnsemble(n_parameter_samples=250, max_ensemble_size=50, randomly_selected_params=50,
+                                        random_state=kwargs["random_state"], time_limit_in_minutes=1)
+        cb.fit(self.train_x, self.train_y)
+        return self.predict_and_results(mod=cb, **kwargs)
+
+    def rise(self, **kwargs):
+        """
+        Random Interval Spectral Ensemble Classifier
+        """
+        steps = [
+            ("concatenate", ColumnConcatenator()),  # TSF requires concatenation of columns
+            ("classify", RandomIntervalSpectralEnsemble(random_state=kwargs["random_state"])),
+        ]
+        r = Pipeline(steps)
+        r.fit(self.train_x, self.train_y)
+        return self.predict_and_results(mod=r, **kwargs)
+
+    def shapelet(self, **kwargs):
+        """
+        Shapelet Transform Classifier
+        """
+        stc = ShapeletTransformClassifier(random_state=kwargs["random_state"], time_limit_in_minutes=1)
+        stc.fit(self.train_x, self.train_y)
+        return self.predict_and_results(mod=stc, **kwargs)
+
+    def hivecote(self, **kwargs):
+        """
+        HIVE-COTE V2 Classifier
+
+        Note that performance is poor owing to the ensemble models and a full K=20 validation scheme may not be tenable
+        in the short-term
+        """
+        hc2 = HIVECOTEV2(n_jobs=-1, random_state=kwargs["random_state"])
+        hc2.fit(self.train_x, self.train_y)
+        return self.predict_and_results(mod=hc2, **kwargs)
+
+    def predict_and_results(self, mod, **kwargs):
+        """
+        Provides general functionalities for the prediction & results of trained models
+
+        :param mod: trained ML baseline
+        :return: statistics on model performance, confusion matrix of model
+        """
+        preds = mod.predict(self.test_x)
+        probs = mod.predict_proba(self.test_x)
+        res, cm = _results_logging(preds, self.test_y, probs, name=str(type(mod)), verbose=kwargs['verbose'])
+        return res, cm
