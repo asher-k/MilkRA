@@ -142,7 +142,8 @@ if __name__ == '__main__':
                         ranges=args.load_ranges,
                         features=args.features_at,
                         normalize=args.normalize,
-                        ts=True if "ts" in args.experiment else False)
+                        ts=any([True if d in args.experiment else False for d in ["ts", "dl"]])
+                        )
 
     # delegate to experiment script
     logging.info(f"Delegating: {args.experiment}, {args.model}")

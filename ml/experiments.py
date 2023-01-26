@@ -11,7 +11,8 @@ from models import Baselines, Clustering, TSModels
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
 from data import format_name, load, _col_order, run_pca
-from plots import samplewise_misclassification_rates, confusion_matrix
+from plots import samplewise_misclassification_rates, confusion_matrix, aggregation_differences
+from nn import CNN
 
 
 def classify_baselines(args, data, labels, logs_dir):
@@ -104,10 +105,28 @@ def classify_dl(args, X, y):
     """
     Classification experiment with DL models
     """
-    lr, bs, e = 1e-3, 8, 10
+    aggregation_differences(X, y)
+    exit()
+
+    from sklearn.metrics import classification_report
+    from torch.utils.data import DataLoader
+    from torch.optim import Adam
+    from torch import nn
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    lr, bs, e = 1e-3, 8, 10
+    X["class"] = y
+    print(X)
+    exit()
 
+    x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.333, stratify=y)
+    x_train = torch.tensor(x_train)
+    x_test = torch.tensor(x_test)
+    y_train = torch.tensor(y_train)
+    y_test = torch.tensor(y_test)
+    train_data = DataLoader(x_train, )
 
+    model = CNN(4).to(device)
 
 
 def classify_ts(args, X, y):

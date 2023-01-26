@@ -2,7 +2,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+from mpl_toolkits.axes_grid1 import ImageGrid
 import seaborn as sns
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
 from data import format_name
 from sklearn.metrics import ConfusionMatrixDisplay
 
@@ -53,3 +56,46 @@ def confusion_matrix(cm, labels, arguments, save_dir, model_name):
     cm_display.plot()
     fig_name = format_name(arguments, save_dir, f"_{model_name}_cm.png")
     plt.savefig(fig_name)
+
+
+def aggregation_differences(X, y):
+    """
+    Produces heatmaps of the 'average' sample of a class, and identifies major differences between classes
+    """
+    X = [np.rot90(x, k=3) for x in X]
+    classes = {"DBM 1000mA Repeats": [], "GTM 1000mA Repeats": [], "LBM 1000mA Repeats": [], "LBP+ 1000mA Repeats": []}
+    avg = {"DBM 1000mA Repeats":None, "GTM 1000mA Repeats":None, "LBM 1000mA Repeats":None, "LBP+ 1000mA Repeats":None}
+    for i, x in enumerate(X):
+        classes[y[i]].append(x)
+    for k, v in classes.items():
+        avg[k] = sum(v)/len(v)
+    finals = []
+    for k, v1 in avg.items():
+        for _, v2 in avg.items():
+            if np.allclose(v1, v2):
+                finals.append(v1)
+            else:
+                finals.append(v1-v2)
+
+    fig = plt.figure(figsize=(8., 8.))
+    grid = ImageGrid(fig, 111, nrows_ncols=(4, 4), axes_pad=0.1)
+    for i, ax, im in zip(enumerate(finals), grid, finals):
+        ax.set_xlabel(list(avg.keys())[i[0] % 4][:4])
+        ax.set_ylabel(list(avg.keys())[i[0]//4][:4])
+        ims = ax.imshow(im, aspect=.12, vmin=-1, vmax=1, cmap='coolwarm')
+
+    fig.suptitle("\'Pixel-wise\' divergences between mean class samples")
+    fig.supylabel("Temporal Relationships")
+    fig.supxlabel("Positional Relationships")
+
+    axins = inset_axes(
+        ax,
+        width="10%",  # width: 10% of parent_bbox width
+        height="420%",  # height: 50%
+        loc="lower left",
+        bbox_to_anchor=(1.05, 0., 1, 1),
+        bbox_transform=ax.transAxes,
+        borderpad=0,
+    )
+    fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
+    plt.show()
