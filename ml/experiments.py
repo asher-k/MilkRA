@@ -5,14 +5,17 @@ import pandas as pd
 import numpy as np
 import numpy.random as nprand
 import matplotlib.pyplot as plt
-
 from sklearn.metrics import ConfusionMatrixDisplay
+from torch.utils.data import random_split
+from torch.utils.data import DataLoader
+from torch.optim import Adam
+from torch import nn
+from nn import CNN
 from models import Baselines, Clustering, TSModels
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
-from data import format_name, load, _col_order, run_pca
+from data import format_name, _col_order, run_pca, DropletDataset, ToTensor, FloatTransform
 from plots import samplewise_misclassification_rates, confusion_matrix, aggregation_differences
-from nn import CNN
 
 
 def classify_baselines(args, data, labels, logs_dir):
@@ -105,28 +108,51 @@ def classify_dl(args, X, y):
     """
     Classification experiment with DL models
     """
-    aggregation_differences(X, y)
-    exit()
-
-    from sklearn.metrics import classification_report
-    from torch.utils.data import DataLoader
-    from torch.optim import Adam
-    from torch import nn
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    lr, bs, e = 1e-3, 8, 10
-    X["class"] = y
-    print(X)
-    exit()
+    lr, bs, E, spl = 1e-3, 8, 10, (0.667, 0.333)  # 70-30 train-test split
 
-    x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.333, stratify=y)
-    x_train = torch.tensor(x_train)
-    x_test = torch.tensor(x_test)
-    y_train = torch.tensor(y_train)
-    y_test = torch.tensor(y_test)
-    train_data = DataLoader(x_train, )
+    # Prepare data and initialize training & test DataLoaders
+    X = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
+    y = np.array(y)
+    data = DropletDataset(X, y, transforms=[
+        ToTensor(), FloatTransform(),
+    ])
+    (trainData, testData) = random_split(data, [int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])],
+                                         generator=torch.Generator().manual_seed(args.seed))
+    trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
+    testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
 
+    # init model, optimizer, logs
     model = CNN(4).to(device)
+    optimizer = Adam(model.parameters(), lr=lr)
+    loss_fn = nn.NLLLoss()
+    performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+
+    # begin training over epochs
+    for e in range(0, E):
+        loss, acc = _train_step(model, trainLoader, device, loss_fn, optimizer)  # training
+        performance_log["train_loss"].append(loss)
+        performance_log["train_acc"].append(acc)
+        logging.info(f"EPOCH {e}\ntrain_loss {loss}, train_acc {acc}")
+
+        loss, acc = _val_step(model, testLoader, device, loss_fn)  # validation
+        performance_log["val_loss"].append(loss)
+        performance_log["val_acc"].append(acc)
+        logging.info(f"Finished: {e}\nval_loss {loss}, val_acc {acc}")
+
+    exit()
+    plt.style.use("ggplot")
+    plt.figure()
+    print(performance_log["train_loss"])
+    plt.plot(performance_log["train_loss"], label="train_loss")
+    plt.plot(performance_log["val_loss"], label="val_loss")
+    plt.plot(performance_log["train_acc"], label="train_acc")
+    plt.plot(performance_log["val_acc"], label="val_acc")
+    plt.title("Training Loss and Accuracy on Dataset")
+    plt.xlabel("Epoch #")
+    plt.ylabel("Loss/Accuracy")
+    plt.legend(loc="lower left")
+    plt.show()
 
 
 def classify_ts(args, X, y):
@@ -179,3 +205,41 @@ def clustering(args, X, y):
     model = clusters.m[args.model][0]
     model = model()
     clusters.dendrogram(model)
+
+
+def _train_step(model, dataLoader, device, loss_fn, opt):
+    """
+    Performs one training step for the provided NN model
+    """
+    model.train()
+    train_loss, train_acc = 0, 0
+
+    # loop over the training set
+    for (x, y) in dataLoader:
+        (x, y) = (x.to(device), y.to(device))
+
+        pred = model(x)
+        loss = loss_fn(pred, y)
+        opt.zero_grad()  # 0 gradient
+        loss.backward()  # backprop
+        opt.step()  # update weights
+
+        # loss & accuracy logging
+        train_loss += loss
+        train_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
+    return train_loss, train_acc
+
+
+def _val_step(model, dataLoader, device, loss_fn):
+    """
+    Verifies model performance on the validation set
+    """
+    val_loss, val_acc = 0, 0
+    with torch.no_grad():
+        model.eval()
+        for x, y in dataLoader:
+            x, y = (x.to(device), y.to(device))
+            pred = model(x)
+            val_loss += loss_fn(pred, y)
+            val_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
+    return val_loss, val_acc

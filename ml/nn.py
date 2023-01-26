@@ -1,4 +1,5 @@
 import torch.nn as nn
+from torch import flatten
 
 
 class CNN(nn.Module):
@@ -7,15 +8,15 @@ class CNN(nn.Module):
     """
     def __init__(self, num_classes):
         super(CNN, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=20, kernel_size=(5, 5))
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=20, kernel_size=(10, 10))
         self.relu1 = nn.ReLU()
         self.mpool1 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
 
-        self.conv2 = nn.Conv2d(in_channels=1, out_channels=50, kernel_size=(5, 5))
+        self.conv2 = nn.Conv2d(in_channels=20, out_channels=50, kernel_size=(5, 5))
         self.relu2 = nn.ReLU()
         self.mpool2 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
 
-        self.dense1 = nn.Linear(in_features=100, out_features=500)
+        self.dense1 = nn.Linear(in_features=4350, out_features=500)
         self.relu3 = nn.ReLU()
 
         self.dense2 = nn.Linear(in_features=500, out_features=num_classes)
@@ -30,7 +31,7 @@ class CNN(nn.Module):
         x = self.relu2(x)
         x = self.mpool2(x)
 
-        x = nn.Flatten(x, 1)
+        x = flatten(x, 1)
         x = self.dense1(x)
         x = self.relu3(x)
 

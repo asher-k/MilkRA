@@ -1,11 +1,55 @@
 import re
 import os
 import logging
-
 import numpy as np
 import pandas as pd
 import sklearn.preprocessing as sklp
 from sklearn.decomposition import PCA
+import torch
+from torch.utils.data import Dataset, DataLoader
+
+
+class DropletDataset(Dataset):
+    """
+    Structured dataset for Torch models
+    """
+    def __init__(self, X, y, transforms=False):
+        self.droplets_frame = X
+        self.droplets_label = y
+        self.transforms = transforms
+
+    def __len__(self):
+        return len(self.droplets_frame)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        sample = self.droplets_frame[idx]
+        for transform in self.transforms:
+            sample = transform(sample)
+
+        label = self.droplets_label[idx]
+        label = _label_to_index(label)
+        return sample, label
+
+
+class ToTensor(object):
+    """
+    Transformation that converts our 3d NumPy arrays into Tensors.
+    """
+    def __call__(self, sample):
+        sample = torch.from_numpy(sample)
+        return sample
+
+
+class FloatTransform(object):
+    """
+    Transformation that converts all values to float32 to ensure Torch compatability
+    """
+    def __call__(self, sample):
+        sample = np.array([np.array([np.array([np.float32(val) for val in r]) for r in c]) for c in sample])
+        return sample
 
 
 def run_pca(data, labels, seed, num_components=5):
@@ -144,3 +188,13 @@ def _parse_ranges(ranges, split=":"):
         start, end, step = (int(i) for i in s)
         parsed.update(set(range(start, end, step)))
     return sorted(parsed)
+
+
+def _label_to_index(label):
+    """
+    Converts string label to numeric representation
+
+    :return: numeric representation of the label
+    """
+    map_dict = {"DBM 1000mA Repeats": 0, "GTM 1000mA Repeats": 1, "LBM 1000mA Repeats": 2, "LBP+ 1000mA Repeats": 3}
+    return map_dict[label]
