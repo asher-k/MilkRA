@@ -126,9 +126,10 @@ if __name__ == '__main__':
     if not os.path.exists(logs_dir):
         os.makedirs(logs_dir)
     logging.basicConfig(filename=logs_name,
-                        level=logging.DEBUG,
                         format="%(asctime)s: %(message)s",
                         filemode="w")
+    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger('matplotlib.font_manager').disabled = True
     if args.verbose:
         logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))  # also print to console
     logging.info("Starting Preprocessing...")

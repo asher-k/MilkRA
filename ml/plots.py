@@ -1,3 +1,5 @@
+import logging
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -99,3 +101,48 @@ def aggregation_differences(X, y):
     )
     fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
     plt.show()
+
+
+def epoch_performance(epochs):
+    """
+    Plots training & validation performance of a DL model over a number of epochs
+    """
+    plt.style.use("ggplot")
+    plt.figure()
+    plt.plot(epochs["train_loss"], label="train_loss")
+    plt.plot(epochs["val_loss"], label="val_loss")
+    plt.plot(epochs["train_acc"], label="train_acc")
+    plt.plot(epochs["val_acc"], label="val_acc")
+    plt.title("Loss/Accuracy on Dataset")
+    plt.xlabel("Epoch #")
+    plt.ylabel("Loss/Accuracy")
+    plt.legend(loc="lower left")
+    plt.show()
+
+
+def conv_visualizations(*convs):
+    """
+    Displays convolutional filters of the provided convolutional layers
+    """
+    for conv in convs:
+        weight = conv.weight.detach().numpy()
+        logging.info(f"Shape of {conv}: {weight.shape}")
+        weight = np.reshape(weight, (len(weight) * len(weight[1]), len(weight[1][0]), len(weight[1][0][0]), 1))
+
+        fig = plt.figure(figsize=(8., 8.))
+        grid = ImageGrid(fig, 111, nrows_ncols=(len(weight)//5, 5), axes_pad=0.1)
+        for i, ax, im in zip(enumerate(weight), grid, weight):
+            ims = ax.imshow(im, aspect=1, vmin=-1, vmax=1)
+
+        fig.suptitle(f"Convolutional Filters in {conv}")
+        axins = inset_axes(
+            ax,
+            width="10%",  # width: 10% of parent_bbox width
+            height="209%",  # height: 50%
+            loc="lower left",
+            bbox_to_anchor=(1.05, 0., 1, 1),
+            bbox_transform=ax.transAxes,
+            borderpad=0,
+        )
+        fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
+        plt.show()

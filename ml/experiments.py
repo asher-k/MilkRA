@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 import numpy.random as nprand
 import matplotlib.pyplot as plt
+import plots as plt
 from sklearn.metrics import ConfusionMatrixDisplay
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
@@ -15,7 +16,6 @@ from models import Baselines, Clustering, TSModels
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
 from data import format_name, _col_order, run_pca, DropletDataset, ToTensor, FloatTransform
-from plots import samplewise_misclassification_rates, confusion_matrix, aggregation_differences
 
 
 def classify_baselines(args, data, labels, logs_dir):
@@ -74,8 +74,8 @@ def classify_baselines(args, data, labels, logs_dir):
             results.to_csv(csv_name)
 
             if args.verbose:  # aggregate confusion matrix & misclassification rate figures & save to output directory
-                samplewise_misclassification_rates(baselines, labels, args, save_dir, model_name)
-                confusion_matrix(cm, labels, args, save_dir, model_name)
+                plt.samplewise_misclassification_rates(baselines, labels, args, save_dir, model_name)
+                plt.confusion_matrix(cm, labels, args, save_dir, model_name)
 
             # format & save feature importances into a logging subdirectory
             if args.importance and not args.only_acc and model_name in ["logreg", "dt"]:
@@ -108,8 +108,9 @@ def classify_dl(args, X, y):
     """
     Classification experiment with DL models
     """
+    torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    lr, bs, E, spl = 1e-3, 8, 10, (0.667, 0.333)  # 70-30 train-test split
+    lr, bs, E, spl = 1e-4, 6, 50, (0.667, 0.333)  # 70-30 train-test split
 
     # Prepare data and initialize training & test DataLoaders
     X = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
@@ -117,10 +118,12 @@ def classify_dl(args, X, y):
     data = DropletDataset(X, y, transforms=[
         ToTensor(), FloatTransform(),
     ])
-    (trainData, testData) = random_split(data, [int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])],
+    train_size, val_size = int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])
+    (trainData, testData) = random_split(data, [train_size, val_size],
                                          generator=torch.Generator().manual_seed(args.seed))
     trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
     testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
+    trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
     # init model, optimizer, logs
     model = CNN(4).to(device)
@@ -128,31 +131,21 @@ def classify_dl(args, X, y):
     loss_fn = nn.NLLLoss()
     performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
 
-    # begin training over epochs
+    # begin training over epochs & produce visualization(s)
     for e in range(0, E):
-        loss, acc = _train_step(model, trainLoader, device, loss_fn, optimizer)  # training
-        performance_log["train_loss"].append(loss)
-        performance_log["train_acc"].append(acc)
-        logging.info(f"EPOCH {e}\ntrain_loss {loss}, train_acc {acc}")
+        performance_log = _train_step(model, trainLoader, device, loss_fn, optimizer, performance_log)  # training
+        performance_log = _val_step(model, testLoader, device, loss_fn, performance_log)  # validation
 
-        loss, acc = _val_step(model, testLoader, device, loss_fn)  # validation
-        performance_log["val_loss"].append(loss)
-        performance_log["val_acc"].append(acc)
-        logging.info(f"Finished: {e}\nval_loss {loss}, val_acc {acc}")
+    # compute mean performances
+    for k1, k2 in zip(["train_loss", "val_loss"], ["train_acc", "val_acc"]):
+        performance_log[k1] = [a/trainSteps if "train" in k1 else a/valSteps for a in performance_log[k1]]
+        performance_log[k2] = [a/train_size if "train" in k2 else a/val_size for a in performance_log[k2]]
+        logging.info(f"Final {k1}\t{round(performance_log[k1][-1], 3)}\n"
+                     f"Final {k2}\t\t{round(performance_log[k2][-1], 3)}")
 
-    exit()
-    plt.style.use("ggplot")
-    plt.figure()
-    print(performance_log["train_loss"])
-    plt.plot(performance_log["train_loss"], label="train_loss")
-    plt.plot(performance_log["val_loss"], label="val_loss")
-    plt.plot(performance_log["train_acc"], label="train_acc")
-    plt.plot(performance_log["val_acc"], label="val_acc")
-    plt.title("Training Loss and Accuracy on Dataset")
-    plt.xlabel("Epoch #")
-    plt.ylabel("Loss/Accuracy")
-    plt.legend(loc="lower left")
-    plt.show()
+    if args.verbose:
+        # plt.epoch_performance(performance_log)
+        plt.conv_visualizations(model.conv1, model.conv2)
 
 
 def classify_ts(args, X, y):
@@ -207,7 +200,7 @@ def clustering(args, X, y):
     clusters.dendrogram(model)
 
 
-def _train_step(model, dataLoader, device, loss_fn, opt):
+def _train_step(model, dataLoader, device, loss_fn, opt, log, verbose=False):
     """
     Performs one training step for the provided NN model
     """
@@ -227,10 +220,16 @@ def _train_step(model, dataLoader, device, loss_fn, opt):
         # loss & accuracy logging
         train_loss += loss
         train_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
-    return train_loss, train_acc
+
+    if verbose:  # not recommended; purely debugging
+        plt.conv_visualizations(model.conv1,)
+    log["train_loss"].append(train_loss.item())
+    log["train_acc"].append(train_acc)
+    logging.info(f"train_loss {train_loss.item()}, train_acc {train_acc}")
+    return log
 
 
-def _val_step(model, dataLoader, device, loss_fn):
+def _val_step(model, dataLoader, device, loss_fn, log):
     """
     Verifies model performance on the validation set
     """
@@ -242,4 +241,8 @@ def _val_step(model, dataLoader, device, loss_fn):
             pred = model(x)
             val_loss += loss_fn(pred, y)
             val_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
-    return val_loss, val_acc
+
+    log["val_loss"].append(val_loss.item())
+    log["val_acc"].append(val_acc)
+    logging.info(f"val_loss {val_loss.item()}, val_acc {val_acc}")
+    return log
