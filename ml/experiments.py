@@ -11,7 +11,7 @@ from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch import nn
-from nn import CNN
+from nn import CNN, TrackedCNN
 from models import Baselines, Clustering, TSModels
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
@@ -126,7 +126,7 @@ def classify_dl(args, X, y):
     trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
     # init model, optimizer, logs
-    model = CNN(4).to(device)
+    model = TrackedCNN(4).to(device)
     optimizer = Adam(model.parameters(), lr=lr)
     loss_fn = nn.NLLLoss()
     performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
