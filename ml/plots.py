@@ -60,7 +60,7 @@ def confusion_matrix(cm, labels, arguments, save_dir, model_name):
     plt.savefig(fig_name)
 
 
-def aggregation_differences(X, y):
+def aggregation_differences(X, y, agg_type=None):
     """
     Produces heatmaps of the 'average' sample of a class, and identifies major differences between classes
     """
@@ -70,7 +70,11 @@ def aggregation_differences(X, y):
     for i, x in enumerate(X):
         classes[y[i]].append(x)
     for k, v in classes.items():
-        avg[k] = sum(v)/len(v)
+        if agg_type == "mean":  # mean image computation
+            avg[k] = sum(v)/len(v)
+        else:  # pixel-wise variance
+            avg[k] = np.array([[np.var([im[r][0][c] for im in v])
+                                for c in range(0, len(v[0][0][0]))]for r in range(0, len(v[0]))])
     finals = []
     for k, v1 in avg.items():
         for _, v2 in avg.items():
@@ -146,3 +150,27 @@ def conv_visualizations(*convs):
         )
         fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
         plt.show()
+
+
+def embedding_visualization(X, y, track_misclassified=True, method=""):
+    """
+    Displays 2d data embededdings, coloring according to class and labels according to index
+    """
+    if type(X) is pd.DataFrame:
+        X = X.to_numpy()
+    lab_to_col = {"DBM": "mediumblue", "GTM": "forestgreen", "LBM": "dodgerblue", "LBP+": "goldenrod"}
+    colors = [lab_to_col[y[int(i)][:4].strip()] for i, _ in enumerate(X)]  # samples-to-color mapping
+
+    plt.scatter(X[:, 0], X[:, 1], c=colors)
+    ax = plt.gca()
+    ax.set_aspect('equal', 'datalim')
+    plt.title(f'{method} Dimensionality Reduction', fontsize=16)
+
+    known_misclassified = [6, 9, 25, 32, 44, 61]
+
+    for x_p, y_p, i in zip(X[:, 0], X[:, 1], range(0, len(y))):
+        if track_misclassified and i in known_misclassified:
+            ax.annotate(i, (x_p, y_p), color="orangered", weight='bold')
+        else:
+            ax.annotate(i, (x_p, y_p))
+    plt.show()

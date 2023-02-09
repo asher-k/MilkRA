@@ -15,7 +15,7 @@ from nn import CNN, TrackedCNN
 from models import Baselines, Clustering, TSModels
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
-from data import format_name, _col_order, run_pca, DropletDataset, ToTensor, FloatTransform
+from data import format_name, _col_order, run_pca, run_umap, DropletDataset, ToTensor, FloatTransform
 
 
 def classify_baselines(args, data, labels, logs_dir):
@@ -23,6 +23,7 @@ def classify_baselines(args, data, labels, logs_dir):
     Classification experiment on baseline non-time series models
     """
     baselines = Baselines()
+
     for model in baselines.m[args.model]:
         for row in data.index:  # inits samplewise misclassification counts
             baselines.preddict[row] = (0., 0)

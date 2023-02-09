@@ -6,7 +6,10 @@ import pandas as pd
 import sklearn.preprocessing as sklp
 from sklearn.decomposition import PCA
 import torch
+import umap
+from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset, DataLoader
+import plots
 
 
 class DropletDataset(Dataset):
@@ -52,14 +55,15 @@ class FloatTransform(object):
         return sample
 
 
-def run_pca(data, labels, seed, num_components=5):
+def run_pca(data, labels, seed, num_components=2, verbose=False):
     """
     Performs PCA on the provided data and labels
 
     :param data: data to transform
     :param labels: associated class labels
     :param seed: emables deterministic results
-    :param num_components: Number of principle components to consider; anything 10 > x > 2 performs well
+    :param num_components: Number of principle components to consider; anything 10 > x > 2 performs well, with 5 being +
+    :param verbose: True to display plot of the embedding (requires n_components = 2)
     :return:
     """
     standardizer = sklp.StandardScaler().fit(data)
@@ -67,7 +71,20 @@ def run_pca(data, labels, seed, num_components=5):
     pca = PCA(random_state=seed, n_components=num_components)  # >0.9 @ 2 PCs
     data = pd.DataFrame(pca.fit_transform(dstd, labels))
     logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
+    if verbose:
+        plots.embedding_visualization(data, labels, method="PCA")
     return data
+
+
+def run_umap(X, y, seed, num_components=2, verbose=False):
+    """
+    Performs UMAP dimensionality reduction and displays a plot of the transformed points
+    """
+    umapper = umap.UMAP(n_components=num_components, random_state=seed)
+    X_mapped = umapper.fit_transform(X)
+    if verbose:
+        plots.embedding_visualization(X_mapped, y, method="UMAP")
+    return X_mapped
 
 
 def format_name(arg, d=None, ext=None):
@@ -101,11 +118,12 @@ def load(data_dir, data_type, **kwargs):
     :return: DataFrame dataset, List labels
     """
     x, y, norm_consts = [], [], []
-    classes = os.listdir(data_dir)
+    classes = sorted(os.listdir(data_dir))
     for c in classes:
         class_dir = "{d}/{c}".format(d=data_dir, c=c)
         seqs, index_cols = [], []
-        for f in os.listdir(class_dir+"/"):  # individually load each .csv file
+        files = sorted(os.listdir(class_dir+"/"))
+        for f in files:  # individually load each .csv file
             file_dir = "{c}/{f}/".format(c=class_dir, f=f)
             files = os.listdir(file_dir)
             file = list(filter(lambda fl: data_type+".csv" in fl, files))
