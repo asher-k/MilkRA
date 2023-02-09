@@ -133,6 +133,8 @@ dmypy.json
 
 # Project-specific ignores
 logs/*/
+data/*/
 logs_backup/
 ml/_backup.txt
 *.Rhistory
+
