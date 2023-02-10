@@ -60,21 +60,29 @@ def confusion_matrix(cm, labels, arguments, save_dir, model_name):
     plt.savefig(fig_name)
 
 
-def aggregation_differences(X, y, agg_type=None):
+def _aggregatae_mean_image(X, y, agg_type=None):
     """
-    Produces heatmaps of the 'average' sample of a class, and identifies major differences between classes
+    Produces a mean image from multiple samples
     """
-    X = [np.rot90(x, k=3) for x in X]
     classes = {"DBM 1000mA Repeats": [], "GTM 1000mA Repeats": [], "LBM 1000mA Repeats": [], "LBP+ 1000mA Repeats": []}
     avg = {"DBM 1000mA Repeats":None, "GTM 1000mA Repeats":None, "LBM 1000mA Repeats":None, "LBP+ 1000mA Repeats":None}
+    X = [np.rot90(x, k=3) for x in X]
     for i, x in enumerate(X):
         classes[y[i]].append(x)
     for k, v in classes.items():
         if agg_type == "mean":  # mean image computation
-            avg[k] = sum(v)/len(v)
+            avg[k] = sum(v) / len(v)
         else:  # pixel-wise variance
             avg[k] = np.array([[np.var([im[r][0][c] for im in v])
-                                for c in range(0, len(v[0][0][0]))]for r in range(0, len(v[0]))])
+                                for c in range(0, len(v[0][0][0]))] for r in range(0, len(v[0]))])
+    return classes, avg
+
+
+def aggregation_differences(X, y, agg_type=None):
+    """
+    Produces heatmaps of the 'average' sample of a class, and identifies major differences between classes
+    """
+    classes, avg = _aggregatae_mean_image(X, y, agg_type)
     finals = []
     for k, v1 in avg.items():
         for _, v2 in avg.items():
@@ -88,16 +96,62 @@ def aggregation_differences(X, y, agg_type=None):
     for i, ax, im in zip(enumerate(finals), grid, finals):
         ax.set_xlabel(list(avg.keys())[i[0] % 4][:4])
         ax.set_ylabel(list(avg.keys())[i[0]//4][:4])
-        ims = ax.imshow(im, aspect=.12, vmin=-1, vmax=1, cmap='coolwarm')
-
-    fig.suptitle("\'Pixel-wise\' divergences between mean class samples")
+        ims = ax.imshow(im, aspect=.12, vmin=-1 if agg_type == "mean" else -0.1, vmax=1 if agg_type == "mean" else 0.1,
+                        cmap='coolwarm')
+    fig.suptitle(f"\'Pixel-wise\' divergences between mean class samples: {agg_type}")
     fig.supylabel("Temporal Relationships")
     fig.supxlabel("Positional Relationships")
-
     axins = inset_axes(
         ax,
         width="10%",  # width: 10% of parent_bbox width
         height="420%",  # height: 50%
+        loc="lower left",
+        bbox_to_anchor=(1.05, 0., 1, 1),
+        bbox_transform=ax.transAxes,
+        borderpad=0,
+    )
+    fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
+    plt.show()
+
+
+def aggr_vs_sample_difference(X, y, index, agg_type=None):
+    """
+    Produces heatmaps identifying differences between the "mean" image of a class and provided samples
+    :param y: sample labels
+    :param X: samples
+    :type index: iterable of indices extracted from X and compared against mean class images
+    :param agg_type: deprecated in method
+    """
+    samples = X[index, :]
+    samples_y = y[index]
+    X = np.delete(X, index, 0)
+    y = np.delete(y, index, 0)
+
+    classes, avg = _aggregatae_mean_image(X, y, "mean")
+    finals = []
+    for s, s_y in zip(samples, samples_y):  # compute difference between mean image & sample
+        s = np.reshape(s, avg[s_y].shape)
+        finals.append(np.reshape(avg[s_y], (133, 31)))
+        finals.append(np.reshape(s, (133, 31)))
+        diff = avg[s_y] - s
+        finals.append(np.reshape(diff, (133, 31)))
+
+    # Then plot
+    fig = plt.figure(figsize=(8., 8.))
+    grid = ImageGrid(fig, 111, nrows_ncols=(len(index), 3), axes_pad=0.1)
+    x_labels = ["Mean", "Sample", "Divergence"]
+    for i, ax in zip(enumerate(finals), grid):
+        ax.set_xlabel(x_labels[i[0] % 3])
+        row_index = int(np.floor(1/3 * i[0]))
+        ax.set_ylabel(f"{str(index[row_index])} ({samples_y[row_index][:4].strip()})")
+        ims = ax.imshow(i[1], aspect=.12, vmin=-1, vmax=1, cmap='coolwarm')
+    fig.suptitle("\'Pixel-wise\' divergences between mean class and given samples")
+    fig.supylabel("Sample Index, Class")
+    fig.supxlabel("Image")
+    axins = inset_axes(
+        ax,
+        width="10%",  # width: 10% of parent_bbox width
+        height="640%",  # height: 50%
         loc="lower left",
         bbox_to_anchor=(1.05, 0., 1, 1),
         bbox_transform=ax.transAxes,
