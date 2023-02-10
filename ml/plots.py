@@ -114,37 +114,53 @@ def aggregation_differences(X, y, agg_type=None):
     plt.show()
 
 
-def aggr_vs_sample_difference(X, y, index, agg_type=None):
+def aggr_vs_sample_difference(X, y, index, agg_type=None, plot_type="one"):
     """
     Produces heatmaps identifying differences between the "mean" image of a class and provided samples
     :param y: sample labels
     :param X: samples
     :type index: iterable of indices extracted from X and compared against mean class images
     :param agg_type: deprecated in method
+    :param plot_type: type of plot comparison; "one" visualizes only the relevant class, while "all" compares each
+    sample against each class
     """
     samples = X[index, :]
     samples_y = y[index]
     X = np.delete(X, index, 0)
     y = np.delete(y, index, 0)
-
     classes, avg = _aggregatae_mean_image(X, y, "mean")
     finals = []
-    for s, s_y in zip(samples, samples_y):  # compute difference between mean image & sample
-        s = np.reshape(s, avg[s_y].shape)
-        finals.append(np.reshape(avg[s_y], (133, 31)))
-        finals.append(np.reshape(s, (133, 31)))
-        diff = avg[s_y] - s
-        finals.append(np.reshape(diff, (133, 31)))
+    if plot_type == "one":
+        for s, s_y in zip(samples, samples_y):  # compute difference between mean image & sample
+            s = np.reshape(s, avg[s_y].shape)
+            diff = avg[s_y] - s
+            finals.append(np.reshape(avg[s_y], (133, 31)))
+            finals.append(np.reshape(s, (133, 31)))
+            finals.append(np.reshape(diff, (133, 31)))
+        fig = plt.figure(figsize=(8., 8.))
+        grid = ImageGrid(fig, 111, nrows_ncols=(len(index), 3), axes_pad=0.1)
+        x_labels = ["Mean", "Sample", "Divergence"]
+        for i, ax in zip(enumerate(finals), grid):
+            ax.set_xlabel(x_labels[i[0] % 3])
+            row_index = int(np.floor(1/3 * i[0]))
+            ax.set_ylabel(f"{str(index[row_index])} ({samples_y[row_index][:4].strip()})")
+            ims = ax.imshow(i[1], aspect=.12, vmin=-1, vmax=1, cmap='coolwarm')
+    elif plot_type == "all":
+        for s, s_y in zip(samples, samples_y):  # compute difference between mean image & sample
+            finals.append(np.reshape(s, (133, 31)))
+            for k, v in avg.items():
+                s = np.reshape(s, avg[k].shape)
+                diff = avg[k] - s
+                finals.append(np.reshape(diff, (133, 31)))
+        fig = plt.figure(figsize=(8., 8.))
+        grid = ImageGrid(fig, 111, nrows_ncols=(len(index), 5), axes_pad=0.1)
+        x_labels = ["Sample", "DBM", "GTM", "LBM", "LBP+"]
+        for i, ax in zip(enumerate(finals), grid):
+            ax.set_xlabel(x_labels[i[0] % 5])
+            row_index = int(np.floor(1 / 5 * i[0]))
+            ax.set_ylabel(f"{str(index[row_index])} ({samples_y[row_index][:4].strip()})")
+            ims = ax.imshow(i[1], aspect=.12, vmin=-1, vmax=1, cmap='coolwarm')
 
-    # Then plot
-    fig = plt.figure(figsize=(8., 8.))
-    grid = ImageGrid(fig, 111, nrows_ncols=(len(index), 3), axes_pad=0.1)
-    x_labels = ["Mean", "Sample", "Divergence"]
-    for i, ax in zip(enumerate(finals), grid):
-        ax.set_xlabel(x_labels[i[0] % 3])
-        row_index = int(np.floor(1/3 * i[0]))
-        ax.set_ylabel(f"{str(index[row_index])} ({samples_y[row_index][:4].strip()})")
-        ims = ax.imshow(i[1], aspect=.12, vmin=-1, vmax=1, cmap='coolwarm')
     fig.suptitle("\'Pixel-wise\' divergences between mean class and given samples")
     fig.supylabel("Sample Index, Class")
     fig.supxlabel("Image")
