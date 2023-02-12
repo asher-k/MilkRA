@@ -124,11 +124,29 @@ def construct_pairs(droplet_width, desired_observations, midpoint, padded=True):
     return pairs
 
 
-def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
+def export_annotations(img_exptpath, dataset, images, files, _refl, droplets, pairs):
+    """
+    Exports annotated images for manual check
+    """
+    if not os.path.exists(img_exptpath + "/" + dataset):
+        os.makedirs(img_exptpath + "/" + dataset)
+
+    annotate_images(images,
+                    f"{img_exptpath}/{dataset}",
+                    files,
+                    [_refl]*len(droplets),
+                    [d.hgts[d.mid] for d in droplets],
+                    [d.mid for d in droplets],
+                    [d.l for d in droplets],
+                    [d.wid for d in droplets],
+                    pairs)
+    print("Exported annotations: ", img_exptpath + "/" + dataset)
+
+
+def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method, **kwargs):
     """
     Main script (processes a single folder of images to generate CSV & (potentially) annotated files)
     """
-
     # Establish path environment
     combined_path = datapath + "/" + dataset
     files = os.listdir(combined_path)
@@ -139,9 +157,18 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
         images.append(img)
 
     print("Preprocessing", dataset + "...")
+    if kwargs["width_only"]:
+        print("Running script in width-only mode; droplet heights will not be exported!")
+        _refl = Droplet(images[-1], height_method)._reflection()
+        droplets = [Droplet(img, height_method, refl=_refl).setup() for img in images]
+        to_csv(FEATURES.copy(), csv_exptpath, f"{dataset}_WO.csv", files, [d.rfl for d in droplets],
+               [d.wid for d in droplets], [d.hgts[d.mid] for d in droplets])
+        print("Exported csv file: ", csv_exptpath + "/" + dataset)
+        exit()
+
+    # If not in width_only, then continue to export per normal
     _refl = Droplet(images[-1], height_method)._reflection()
     droplets = [Droplet(img, height_method, refl=_refl).setup() for img in images]
-
     unprocessed_fearures = FEATURES.copy()
     pairs = construct_pairs(droplets[-1].wid, 22, droplets[-1].mid, padded=True)
     for p in pairs:
@@ -174,17 +201,4 @@ def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method):
            point_mean=True)
     print("Exported csv files: ", csv_exptpath+"/"+dataset)
 
-    if annotate:
-        if not os.path.exists(img_exptpath + "/" + dataset):
-            os.makedirs(img_exptpath + "/" + dataset)
-
-        annotate_images(images,
-                        f"{img_exptpath}/{dataset}",
-                        files,
-                        [_refl]*len(droplets),
-                        [d.hgts[d.mid] for d in droplets],
-                        [d.mid for d in droplets],
-                        [d.l for d in droplets],
-                        [d.wid for d in droplets],
-                        pairs)
-        print("Exported annotations: ", img_exptpath + "/" + dataset)
+    export_annotations(img_exptpath, dataset, images, files, _refl, droplets, pairs)

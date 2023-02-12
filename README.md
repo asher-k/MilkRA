@@ -22,6 +22,7 @@ First activate your conda environment using the terminal command `conda activate
 | `--dataset`        | `<folder name>`     | **Required when** `--mode = single`. The subdirectory of `data/` to preprocess. Default `None`                                                                                                      |
 | `--height_radius`  | `<integer>`         | Radius to use when calculating height, enables smoother height estimations. When `0`, only the target column's height is calculated (no smoothing). Default `2`                                    |
 | `--height_method`  | `top` or `bottom`   | Method to calculate the height of the droplet, using either a top-down or bottom-up algorithm. Default `top` |
+| `--width_only`     |                     | A special script mode which exports only the width and midpoint height values at each timestep. **Incompatible with** `--annotate`; please verify reflection points manually.|
 
 
 The most important argument is `--mode`, which **must be added as an argument to any script run**. Note that in the `single` mode, the `--dataset` argument **must also be provided**. To add arguments to a script run, modify the terminal command used to run the python file: `python main.py --mode single --dataset example --annotate`.
