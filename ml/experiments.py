@@ -11,11 +11,11 @@ from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch import nn
-from nn import CNN, TrackedCNN
+import nn as nets
 from models import Baselines, Clustering, TSModels
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
-from data import format_name, _col_order, run_pca, run_umap, DropletDataset, ToTensor, FloatTransform
+from data import format_name, _col_order, run_pca, run_umap, DropletDataset, ToTensor, FloatTransform, SubdivTransform
 
 
 def classify_baselines(args, data, labels, logs_dir):
@@ -111,13 +111,13 @@ def classify_dl(args, X, y):
     """
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    lr, bs, E, spl = 1e-4, 6, 50, (0.667, 0.333)  # 70-30 train-test split
+    lr, bs, E, spl = 1e-4, 6, 10, (0.667, 0.333)  # 70-30 train-test split
 
     # Prepare data and initialize training & test DataLoaders
     X = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
     y = np.array(y)
     data = DropletDataset(X, y, transforms=[
-        ToTensor(), FloatTransform(),
+        ToTensor(), FloatTransform(), SubdivTransform(),
     ])
     train_size, val_size = int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])
     (trainData, testData) = random_split(data, [train_size, val_size],
@@ -127,7 +127,7 @@ def classify_dl(args, X, y):
     trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
     # init model, optimizer, logs
-    model = TrackedCNN(4).to(device)
+    model = nets.WindowCNN(4).to(device)
     optimizer = Adam(model.parameters(), lr=lr)
     loss_fn = nn.NLLLoss()
     performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
@@ -146,7 +146,17 @@ def classify_dl(args, X, y):
 
     if args.verbose:
         # plt.epoch_performance(performance_log)
-        plt.conv_visualizations(model.conv1, model.conv2)
+        # plt.conv_visualizations(model.conv1, model.conv2, model.conv3, model.conv4)
+        with torch.no_grad():
+            model.eval()
+            for x, y in testLoader:
+                x, y = (x.to(device), y.to(device))
+                _, ims = model(x)
+                
+                ims = torch.reshape(torch.Tensor(ims[0]), (2, 44, 11))
+                import matplotlib.pyplot as pl
+                pl.imshow(ims[0])
+                pl.imshow(ims[1])
 
 
 def classify_ts(args, X, y):
@@ -212,7 +222,7 @@ def _train_step(model, dataLoader, device, loss_fn, opt, log, verbose=False):
     for (x, y) in dataLoader:
         (x, y) = (x.to(device), y.to(device))
 
-        pred = model(x)
+        pred, _ = model(x)
         loss = loss_fn(pred, y)
         opt.zero_grad()  # 0 gradient
         loss.backward()  # backprop
@@ -239,7 +249,7 @@ def _val_step(model, dataLoader, device, loss_fn, log):
         model.eval()
         for x, y in dataLoader:
             x, y = (x.to(device), y.to(device))
-            pred = model(x)
+            pred, _ = model(x)
             val_loss += loss_fn(pred, y)
             val_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
 

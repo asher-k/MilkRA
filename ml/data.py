@@ -55,6 +55,17 @@ class FloatTransform(object):
         return sample
 
 
+class SubdivTransform(object):
+    """
+    Subdivides the provided image into N square subwindows, discarding any incomplete windows
+    """
+    def __call__(self, sample, axis=2):
+        subdiv_size = sample.shape[axis]
+        n_subdivs = sample.shape[1] // subdiv_size
+        sample = np.array([sample[:, subdiv_size*n:subdiv_size*(n+1), :] for n in range(0, n_subdivs)])
+        return sample
+
+
 def run_pca(data, labels, seed, num_components=2, verbose=False):
     """
     Performs PCA on the provided data and labels

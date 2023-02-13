@@ -201,10 +201,13 @@ def conv_visualizations(*convs):
     for conv in convs:
         weight = conv.weight.detach().numpy()
         logging.info(f"Shape of {conv}: {weight.shape}")
-        weight = np.reshape(weight, (len(weight) * len(weight[1]), len(weight[1][0]), len(weight[1][0][0]), 1))
+        weight = np.reshape(weight, (weight.shape[0], weight.shape[2], weight.shape[3], weight.shape[1]))
 
         fig = plt.figure(figsize=(8., 8.))
-        grid = ImageGrid(fig, 111, nrows_ncols=(len(weight)//5, 5), axes_pad=0.1)
+        n_rows = int(np.ceil(np.sqrt(weight.shape[0])))
+        n_cols = int(np.ceil(weight.shape[0]/n_rows))
+        logging.info(f"Figure shape {n_rows}r {n_cols}c")
+        grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.1)
         for i, ax, im in zip(enumerate(weight), grid, weight):
             ims = ax.imshow(im, aspect=1, vmin=-1, vmax=1)
 
