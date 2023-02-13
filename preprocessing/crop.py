@@ -16,11 +16,13 @@ def _find_crop(img):
     img = drop.img
     vertical = None
     for i, row in enumerate(img):  # First find the vertical crop point
-        if row[0] < BW_CROP and img[i+50][0] < BW_CROP and img[i+100][0] < BW_CROP and vertical is None:
+        if all([row[m] < BW_CROP and img[i+50][m] < BW_CROP and img[i+100][m] < BW_CROP
+                for m in range(250, 275)]) and vertical is None:
             vertical = i
+            print(vertical)
             break
 
-    horizontal = drop._bounds(vertical)[0] - 100
+    horizontal = 0 # drop._bounds(vertical)[0]
 
     #  Then return the crop point
     return vertical if vertical is not None else len(img), horizontal
