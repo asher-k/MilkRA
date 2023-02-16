@@ -313,16 +313,15 @@ def class_activation_maps(model, img, y, out_dir, fname):
     # Obtain & visualize CAM
     cam = _cam_upsample(convs, final_layer, [ind[0]], size=[31, 133])
 
-    for map in cam:
+    for m in cam:
         plt.cla()
         fig = plt.figure(figsize=(8., 8.))
         grid = ImageGrid(fig, 111, nrows_ncols=(1, 2), axes_pad=0.1)
-        for ax, im, c in zip(grid, [np.squeeze(img), map], ['coolwarm', 'plasma']):
+        for ax, im, c in zip(grid, [np.squeeze(img), m], ['coolwarm', 'plasma']):
             ims = ax.imshow(im, aspect=1, cmap=c,
                             vmin=-1 if c == 'coolwarm' else None, vmax=1 if c == 'coolwarm' else None)
         fig.suptitle(f"Class Activation Map: True {y} Predicted {ind[0]}")
-        plt.savefig(f"{out_dir}/CAM_{fname}.png")
-        # python main.py --type raw --name DELETEME  --experiment classify:dl --load_ranges 0:200:2 200:400:10 400:900:40 --seed 1
+        plt.savefig(f"{out_dir}/CAM_{fname.zfill(3)}.png")
 
 
 def _cam_upsample(final_conv, final_dense, top_class, size=None):
