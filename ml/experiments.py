@@ -109,15 +109,16 @@ def classify_dl(args, X, y):
     """
     Classification experiment with DL models
     """
+
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    lr, bs, E, spl = 1e-4, 6, 10, (0.667, 0.333)  # 70-30 train-test split
+    lr, bs, E, spl = 1e-4, 6, 5, (0.667, 0.333)  # 70-30 train-test split
 
     # Prepare data and initialize training & test DataLoaders
     X = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
     y = np.array(y)
     data = DropletDataset(X, y, transforms=[
-        ToTensor(), FloatTransform(), SubdivTransform(),
+        ToTensor(), FloatTransform(), #SubdivTransform(),
     ])
     train_size, val_size = int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])
     (trainData, testData) = random_split(data, [train_size, val_size],
@@ -127,15 +128,20 @@ def classify_dl(args, X, y):
     trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
     # init model, optimizer, logs
-    model = nets.WindowCNN(4).to(device)
+    model = nets.CMapNN(4).to(device)
     optimizer = Adam(model.parameters(), lr=lr)
     loss_fn = nn.NLLLoss()
     performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
 
     # begin training over epochs & produce visualization(s)
+    conevolution = {}
     for e in range(0, E):
+        logging.info(f"Epoch: {e}")
         performance_log = _train_step(model, trainLoader, device, loss_fn, optimizer, performance_log)  # training
         performance_log = _val_step(model, testLoader, device, loss_fn, performance_log)  # validation
+        conevolution[e] = [np.copy(model.conv1.weight.detach().numpy()),
+                           np.copy(model.conv2.weight.detach().numpy()),
+                           ]
 
     # compute mean performances
     for k1, k2 in zip(["train_loss", "val_loss"], ["train_acc", "val_acc"]):
@@ -144,19 +150,14 @@ def classify_dl(args, X, y):
         logging.info(f"Final {k1}\t{round(performance_log[k1][-1], 3)}\n"
                      f"Final {k2}\t\t{round(performance_log[k2][-1], 3)}")
 
-    if args.verbose:
-        # plt.epoch_performance(performance_log)
-        # plt.conv_visualizations(model.conv1, model.conv2, model.conv3, model.conv4)
-        with torch.no_grad():
-            model.eval()
-            for x, y in testLoader:
-                x, y = (x.to(device), y.to(device))
-                _, ims = model(x)
-                
-                ims = torch.reshape(torch.Tensor(ims[0]), (2, 44, 11))
-                import matplotlib.pyplot as pl
-                pl.imshow(ims[0])
-                pl.imshow(ims[1])
+    # plt.epoch_performance(performance_log)
+    plt.class_activation_maps(model, data[0][0], args.logs_dir)
+
+    if args.verbose:  # export convolution visualizations
+        conv1_trend = [v[0] for k, v in conevolution.items()]
+        logging.info(np.sum(np.abs(conv1_trend[0] - conv1_trend[-1])))
+        plt.convolution_by_epoch(conv1_trend, f=5, t=E, out=args.logs_dir, name=f"{args.name}:{args.seed}_convolutions",
+                                 title=f"seed{args.seed}")
 
 
 def classify_ts(args, X, y):
@@ -222,7 +223,7 @@ def _train_step(model, dataLoader, device, loss_fn, opt, log, verbose=False):
     for (x, y) in dataLoader:
         (x, y) = (x.to(device), y.to(device))
 
-        pred, _ = model(x)
+        pred, _extra = model(x)
         loss = loss_fn(pred, y)
         opt.zero_grad()  # 0 gradient
         loss.backward()  # backprop
@@ -249,7 +250,7 @@ def _val_step(model, dataLoader, device, loss_fn, log):
         model.eval()
         for x, y in dataLoader:
             x, y = (x.to(device), y.to(device))
-            pred, _ = model(x)
+            pred, _extra = model(x)
             val_loss += loss_fn(pred, y)
             val_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
 

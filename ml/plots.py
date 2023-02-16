@@ -1,9 +1,13 @@
-import logging
+import torch
+from functools import partial
 
+import logging
+import cv2
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.animation as animation
 from mpl_toolkits.axes_grid1 import ImageGrid
 import seaborn as sns
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
@@ -119,7 +123,7 @@ def aggr_vs_sample_difference(X, y, index, agg_type=None, plot_type="one"):
     Produces heatmaps identifying differences between the "mean" image of a class and provided samples
     :param y: sample labels
     :param X: samples
-    :type index: iterable of indices extracted from X and compared against mean class images
+    :param index: iterable of indices extracted from X and compared against mean class images
     :param agg_type: deprecated in method
     :param plot_type: type of plot comparison; "one" visualizes only the relevant class, while "all" compares each
     sample against each class
@@ -181,48 +185,19 @@ def epoch_performance(epochs):
     """
     Plots training & validation performance of a DL model over a number of epochs
     """
+    eps = list(range(1, len(epochs["train_loss"])+1))
+
     plt.style.use("ggplot")
     plt.figure()
-    plt.plot(epochs["train_loss"], label="train_loss")
-    plt.plot(epochs["val_loss"], label="val_loss")
-    plt.plot(epochs["train_acc"], label="train_acc")
-    plt.plot(epochs["val_acc"], label="val_acc")
+    plt.plot(eps, epochs["train_loss"],  label="train_loss")
+    plt.plot(eps, epochs["val_loss"], label="val_loss")
+    plt.plot(eps, epochs["train_acc"], label="train_acc")
+    plt.plot(eps, epochs["val_acc"], label="val_acc")
     plt.title("Loss/Accuracy on Dataset")
     plt.xlabel("Epoch #")
     plt.ylabel("Loss/Accuracy")
     plt.legend(loc="lower left")
     plt.show()
-
-
-def conv_visualizations(*convs):
-    """
-    Displays convolutional filters of the provided convolutional layers
-    """
-    for conv in convs:
-        weight = conv.weight.detach().numpy()
-        logging.info(f"Shape of {conv}: {weight.shape}")
-        weight = np.reshape(weight, (weight.shape[0], weight.shape[2], weight.shape[3], weight.shape[1]))
-
-        fig = plt.figure(figsize=(8., 8.))
-        n_rows = int(np.ceil(np.sqrt(weight.shape[0])))
-        n_cols = int(np.ceil(weight.shape[0]/n_rows))
-        logging.info(f"Figure shape {n_rows}r {n_cols}c")
-        grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.1)
-        for i, ax, im in zip(enumerate(weight), grid, weight):
-            ims = ax.imshow(im, aspect=1, vmin=-1, vmax=1)
-
-        fig.suptitle(f"Convolutional Filters in {conv}")
-        axins = inset_axes(
-            ax,
-            width="10%",  # width: 10% of parent_bbox width
-            height="209%",  # height: 50%
-            loc="lower left",
-            bbox_to_anchor=(1.05, 0., 1, 1),
-            bbox_transform=ax.transAxes,
-            borderpad=0,
-        )
-        fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
-        plt.show()
 
 
 def embedding_visualization(X, y, track_misclassified=True, method=""):
@@ -247,3 +222,121 @@ def embedding_visualization(X, y, track_misclassified=True, method=""):
         else:
             ax.annotate(i, (x_p, y_p))
     plt.show()
+
+
+def conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=None):
+    """
+    Displays convolutional filters of the provided convolutional layers at a provided timestep
+
+    :param t: Epoch to produce visualizations at (if final, should be 0)
+    :param verbose: Enabling verbosity displays the plot
+    :param fig: Figure instance (optional)
+    :param grid: iterable instance of axes (optional)
+    """
+    t -= 1
+    plt.cla()
+    weight, to_append = convs[t], epochs[t]
+    weight = np.reshape(weight, (weight.shape[0], weight.shape[2], weight.shape[3], weight.shape[1]))
+
+    if fig is None or grid is None:
+        fig = plt.figure(figsize=(8., 8.))
+        n_rows = int(np.ceil(np.sqrt(weight.shape[0])))
+        n_cols = int(np.ceil(weight.shape[0]/n_rows))
+        logging.info(f"Figure shape {n_rows}r {n_cols}c")
+        grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.1)
+    for i, ax, im in zip(enumerate(weight), grid, weight):
+        ims = ax.imshow(im, aspect=1, vmin=-1, vmax=1)
+    fig.suptitle(f"Convolutional Filters, {title}:{str(to_append)}")
+    if verbose:
+        logging.info(f"Shape of conv: {weight.shape}")
+        axins = inset_axes(
+            ax,
+            width="10%",  # width: 10% of parent_bbox width
+            height="209%",  # height: 50%
+            loc="lower left",
+            bbox_to_anchor=(1.05, 0., 1, 1),
+            bbox_transform=ax.transAxes,
+            borderpad=0,
+        )
+        fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
+        plt.show()
+
+
+def convolution_by_epoch(data, f, t, out, name, **kwargs):
+    """
+    Produces an animation of the evolution of convolutional filters in .gif format
+
+    :return:
+    """
+    # Setup writer
+    writer = animation.writers['ffmpeg']
+    writer = writer(fps=f)
+    times = list(range(1, t+1))
+    assert len(times) == len(data)
+
+    # Define constant Figure & axes objects
+    fig = plt.figure(figsize=(8., 8.))
+    n_rows = int(np.ceil(np.sqrt(data[0].shape[0])))
+    n_cols = int(np.ceil(data[0].shape[0] / n_rows))
+    logging.info(f"Figure shape {n_rows}r {n_cols}c")
+    grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.1)
+
+    # Generate animation frames & export
+    a = partial(conv_visualizations, convs=data, epochs=times, title=kwargs["title"], fig=fig, grid=grid)
+    anim = animation.FuncAnimation(fig, a, frames=times, interval=int(1000 / f))
+    anim.save(f"{out}/{name}.gif")
+    logging.info(f"Exported convolutions by epoch gif to {out}")
+
+
+def class_activation_maps(model, img, out_dir):
+    """
+    Produces and exports class activation maps for the provided image
+
+    :param model: CNN model with a GAP layer to extract information required for CAMs
+    :param img: image to generate CAM
+    :param out_dir: output directory
+    :return:
+    """
+    torch_img = torch.unsqueeze(torch.Tensor(img), 0)  # reshape from numpy to [1, ...] Tensor
+    pred = torch.squeeze(torch.exp(model(torch_img)[0]))  # Remove from log space
+
+    pred, ind = pred.sort(0, True)  # sort from high->low & obtain indices
+    pred = pred.detach().numpy()
+    ind = ind.numpy()
+
+    # Obtain final dense layer parameters
+    _param = list(model.parameters())
+    final_layer = np.squeeze(_param[-2].data.numpy())  # [4, 64]
+
+    # Obtain final convolutional filters
+    convs = model(torch_img, early_stopping=True)[0].cpu().detach().numpy()
+
+    # Obtain & visualize CAM
+    cam = _cam_upsample(convs, final_layer, [ind[0]], size=[31,131])
+    print(cam)
+
+    for map in cam:
+        heatmap = cv2.applyColorMap(cv2.resize(map, (31, 131)), cv2.COLORMAP_JET)
+        result = heatmap * 0.5 + img * 0.5
+        cv2.imwrite(f"{out_dir}/im", result)
+        # python main.py --type raw --name DELETEME  --experiment classify:dl --load_ranges 0:200:2 200:400:10 400:900:40 --seed 1
+
+
+def _cam_upsample(final_conv, final_dense, top_class, size=None):
+    """
+    Upsamples the CAM produced by the NN to be the same dimensionality as the original input image.
+    """
+    if size is None:
+        size = [31, 131]
+    b, c, h, w = final_conv.shape
+    cams = []
+    for idx in top_class:  # for loop in case we want a CAM for each class
+        imd = final_conv.reshape((c, h*w))
+        cam = np.matmul(final_dense[idx], imd)  # Matrix multiply the weights of our top class with each filter
+        cam = cam.reshape(h, w)
+        cam = cam - np.min(cam)
+        cam = cam / np.max(cam)
+        cam = np.uint8(255 * cam)
+        cams.append(cv2.resize(cam, size))
+    return cam
+
