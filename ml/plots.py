@@ -2,7 +2,7 @@ import torch
 from functools import partial
 
 import logging
-import cv2
+from PIL.Image import Image, fromarray
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -288,7 +288,7 @@ def convolution_by_epoch(data, f, t, out, name, **kwargs):
     logging.info(f"Exported convolutions by epoch gif to {out}")
 
 
-def class_activation_maps(model, img, out_dir):
+def class_activation_maps(model, img, y, out_dir, fname):
     """
     Produces and exports class activation maps for the provided image
 
@@ -299,7 +299,6 @@ def class_activation_maps(model, img, out_dir):
     """
     torch_img = torch.unsqueeze(torch.Tensor(img), 0)  # reshape from numpy to [1, ...] Tensor
     pred = torch.squeeze(torch.exp(model(torch_img)[0]))  # Remove from log space
-
     pred, ind = pred.sort(0, True)  # sort from high->low & obtain indices
     pred = pred.detach().numpy()
     ind = ind.numpy()
@@ -312,13 +311,17 @@ def class_activation_maps(model, img, out_dir):
     convs = model(torch_img, early_stopping=True)[0].cpu().detach().numpy()
 
     # Obtain & visualize CAM
-    cam = _cam_upsample(convs, final_layer, [ind[0]], size=[31,131])
-    print(cam)
+    cam = _cam_upsample(convs, final_layer, [ind[0]], size=[31, 133])
 
     for map in cam:
-        heatmap = cv2.applyColorMap(cv2.resize(map, (31, 131)), cv2.COLORMAP_JET)
-        result = heatmap * 0.5 + img * 0.5
-        cv2.imwrite(f"{out_dir}/im", result)
+        plt.cla()
+        fig = plt.figure(figsize=(8., 8.))
+        grid = ImageGrid(fig, 111, nrows_ncols=(1, 2), axes_pad=0.1)
+        for ax, im, c in zip(grid, [np.squeeze(img), map], ['coolwarm', 'plasma']):
+            ims = ax.imshow(im, aspect=1, cmap=c,
+                            vmin=-1 if c == 'coolwarm' else None, vmax=1 if c == 'coolwarm' else None)
+        fig.suptitle(f"Class Activation Map: True {y} Predicted {ind[0]}")
+        plt.savefig(f"{out_dir}/CAM_{fname}.png")
         # python main.py --type raw --name DELETEME  --experiment classify:dl --load_ranges 0:200:2 200:400:10 400:900:40 --seed 1
 
 
@@ -337,6 +340,7 @@ def _cam_upsample(final_conv, final_dense, top_class, size=None):
         cam = cam - np.min(cam)
         cam = cam / np.max(cam)
         cam = np.uint8(255 * cam)
-        cams.append(cv2.resize(cam, size))
-    return cam
+        cam = np.array(fromarray(cam).resize(size))
+        cams.append(cam)
+    return cams
 

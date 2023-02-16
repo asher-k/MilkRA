@@ -1,5 +1,5 @@
 # Plots 
-This folder is subject to changes over different runs, as new plots are routinely produced and overwritten. Experiment-specific plots produced by ``visuals.py`` are located in ``processed/``, while more informative visualizations produced by the main scripts are in ``general``.
+This folder is subject to changes over different runs, as new plots are routinely produced and overwritten. Experiment-specific plots produced by ``visuals.py`` are located in ``processed/``, while more informative visualizations produced by the main scripts are in ``general/`` and ``CAMs/``.
 
 ## ``general`` plots
 Here we provide annotations and commentary on the types of plots in ``general/``.
@@ -33,3 +33,7 @@ One aspect of our analysis involves tracking the performance of particular sampl
 - [MLP_Sample_misclassifications_comp_pca_filtered.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/MLP_Sample_misclassifications_comp_pca_filtered.png) : Samplewise misclassification rates for an MLP model with the worst-performing sample (probable outliers) of each class removed.
 - [SVC_Sample_misclassifications_comp_pca.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/SVC_Sample_misclassifications_comp_pca.png) : Samplewise misclassification rates for an SVC model.
 - [SVC_Sample_misclassifications_comp_pca_filtered.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/SVC_Sample_misclassifications_comp_pca_filtered.png) : Samplewise misclassification rates for an SVC model with the worst-performing sample (probable outliers) of each class removed.
+
+## ``CAM`` plots
+A Class Activation Map (CAM) is a visualization of the impact convolutional filters have on certain regions of an image. These filters are obtained by extracting the final convolved image before the Global Average Pooling (GAP) layer. By extracting input weights from a fully-connected layer that takes the GAP features as input we obtain "weights" for each convolution-class pair. In our plots we display the CAM for the predicted class from a high-performance model composed of 3 convolutional blocks, which achieved 100% training accuracy and 95% validation accuracy.
+- [CAM/](https://github.com/asher-k/MilkRA/blob/main/output/figures/CAMs/)

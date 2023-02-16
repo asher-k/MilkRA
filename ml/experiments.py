@@ -112,7 +112,7 @@ def classify_dl(args, X, y):
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    lr, bs, E, spl = 1e-4, 6, 5, (0.667, 0.333)  # 70-30 train-test split
+    lr, bs, E, spl = 1e-4, 6, 100, (0.667, 0.333)  # 70-30 train-test split
 
     # Prepare data and initialize training & test DataLoaders
     X = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
@@ -151,7 +151,8 @@ def classify_dl(args, X, y):
                      f"Final {k2}\t\t{round(performance_log[k2][-1], 3)}")
 
     # plt.epoch_performance(performance_log)
-    plt.class_activation_maps(model, data[0][0], args.logs_dir)
+    for i, d in enumerate(data):
+        plt.class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
 
     if args.verbose:  # export convolution visualizations
         conv1_trend = [v[0] for k, v in conevolution.items()]
