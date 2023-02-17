@@ -45,3 +45,6 @@ In every run two outputs are always guaranteed in the form of `csv` files. `<nam
 ### Baselines
 
 ## Visualizations
+We divide our approach to visualizations into two categories, _ad-hoc_ and _post-hoc_. _ad-hoc_ visualizations are produced at runtime from functions in `ml/plot.py` and provide context or results on a single experiment run. Our _post-hoc_ visuals found in `visuals/visuals.py` aggregate results over multiple runs or experiments and produce comparative figures.
+
+If you're looking for a visualization function, it's probably in `ml/plot.py` and is produced at runtime. _post-hoc_ visuals are only necessary when comparing hyperparameter settings on our baseline classification experiment.
