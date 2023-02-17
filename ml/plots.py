@@ -17,16 +17,72 @@ from data import format_name
 from sklearn.metrics import ConfusionMatrixDisplay
 
 
-def samplewise_misclassification_rates(baselines, labels, arguments, save_dir, model_name):
+def _aggregatae_mean_image(X, y, agg_type="mean"):
     """
-    Constructs a horizontal bar chart displaying misclassification rates and classes of the worst-performing samples.
+    Computes a mean image from a set of samples.
+
+    :param X: Droplet data
+    :param y: Droplet classes
+    :param agg_type: Type of aggregation to perform on the set; "mean" computes the mean image, "var" the pixel-wise
+    variance
+    """
+    classes = {"DBM 1000mA Repeats": [], "GTM 1000mA Repeats": [], "LBM 1000mA Repeats": [], "LBP+ 1000mA Repeats": []}
+    avg = {"DBM 1000mA Repeats": None, "GTM 1000mA Repeats": None, "LBM 1000mA Repeats": None,
+           "LBP+ 1000mA Repeats": None}
+    X = [np.rot90(x, k=3) for x in X]
+    for i, x in enumerate(X):
+        classes[y[i]].append(x)
+    for k, v in classes.items():
+        if agg_type == "mean":  # mean image computation
+            avg[k] = sum(v) / len(v)
+        else:  # pixel-wise variance
+            avg[k] = np.array([[np.var([im[r][0][c] for im in v])
+                                for c in range(0, len(v[0][0][0]))] for r in range(0, len(v[0]))])
+    return classes, avg
+
+
+def _cam_ups(final_conv, final_dense, top_class, size=None):
+    """
+    Up samples the CAM to the same dimensionality as the original input image and scales CAM values to the (0,255).
+
+    :param final_conv: Input Image convolved by the final layer of convolutional filters
+    :param final_dense: Weights of the final dense layer
+    :param top_class: Index of the highest-probability class
+    :param size: Tuple shape to up-sample to; should be same dimensionality as our original image
+    """
+    if size is None:
+        size = [31, 131]
+    b, c, h, w = final_conv.shape
+    cams = []
+    for idx in top_class:  # for loop in case we want a CAM for each class
+        imd = final_conv.reshape((c, h*w))
+        cam = np.matmul(final_dense[idx], imd)  # Matrix multiply the weights of our top class with each filter
+        cam = cam.reshape(h, w)
+        cam = cam - np.min(cam)
+        cam = cam / np.max(cam)
+        cam = np.uint8(255 * cam)
+        cam = np.array(fromarray(cam).resize(size))
+        cams.append(cam)
+    return cams
+
+
+def plot_samplewise_misclassification_rates(baselines, n_display, labels, arguments, out_dir, mname):
+    """
+    Displays a horizontal bar chart displaying misclassification rates and classes of samples.
+
+    :param baselines: Trained Baselines instance, with some results stored in preddict
+    :param n_display: Number of samples to display in the plot
+    :param labels: Set of data labels
+    :param arguments: ArgParser used to build the name of the exported figure
+    :param out_dir: Export directory
+    :param mname: Model name used in file name
     """
     plt.clf()
 
     # First apply lite preprocessing to obtain relevant rates & samples
     misc_rates = {str(k): round(v[0] / v[1], 3) for k, v in baselines.preddict.items()}
     misc_rates = pd.DataFrame(misc_rates.items(), columns=['id', 'misc']).sort_values('misc', ascending=False)
-    misc_rates = misc_rates.loc[:][:22]  # often top ~20 perform poorly
+    misc_rates = misc_rates.loc[:][:n_display]  # often top ~20 perform poorly
     misc_rates.reset_index(drop=True, inplace=True)
 
     lab_to_col = {"DBM": "mediumblue", "GTM": "forestgreen", "LBM": "dodgerblue", "LBP+": "goldenrod"}
@@ -48,46 +104,39 @@ def samplewise_misclassification_rates(baselines, labels, arguments, save_dir, m
     patches = [mpatches.Patch(color=v, label=k) for k, v in lab_to_col.items()]
     ax.legend(handles=patches, loc='lower right')
 
-    fig_name = format_name(arguments, save_dir, f"_{model_name}_misc_rates.png")
+    fig_name = format_name(arguments, out_dir, f"_{mname}_misc_rates.png")
     plt.savefig(fig_name)
 
 
-def confusion_matrix(cm, labels, arguments, save_dir, model_name):
+def plot_confusion_matrix(cm, labels, args, out_dir, mname):
     """
     Plots a confusion matrix aggregated over all experiments of a single model
+
+    :param cm: Pre-computed 2d confusion matrix
+    :param labels: Iterable of string labels of data
+    :param args: ArgParser object; used to extract experiment details for file name
+    :param out_dir: Export directory for the file
+    :param mname: Model name displayed in the figure title
     """
     plt.clf()
     cm = np.sum(cm, axis=0)
     cm = np.round(cm / np.sum(cm, axis=1), 3)
     cm_display = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=sorted([l[0:4] for l in set(labels)]))
     cm_display.plot()
-    fig_name = format_name(arguments, save_dir, f"_{model_name}_cm.png")
+    fig_name = format_name(args, out_dir, f"_{mname}_cm.png")
     plt.savefig(fig_name)
 
 
-def _aggregatae_mean_image(X, y, agg_type=None):
+def plot_mean_vs_mean(X, y, agg_type=None):
     """
-    Produces a mean image from multiple samples
-    """
-    classes = {"DBM 1000mA Repeats": [], "GTM 1000mA Repeats": [], "LBM 1000mA Repeats": [], "LBP+ 1000mA Repeats": []}
-    avg = {"DBM 1000mA Repeats":None, "GTM 1000mA Repeats":None, "LBM 1000mA Repeats":None, "LBP+ 1000mA Repeats":None}
-    X = [np.rot90(x, k=3) for x in X]
-    for i, x in enumerate(X):
-        classes[y[i]].append(x)
-    for k, v in classes.items():
-        if agg_type == "mean":  # mean image computation
-            avg[k] = sum(v) / len(v)
-        else:  # pixel-wise variance
-            avg[k] = np.array([[np.var([im[r][0][c] for im in v])
-                                for c in range(0, len(v[0][0][0]))] for r in range(0, len(v[0]))])
-    return classes, avg
+    Displays heatmaps of the 'average' sample of a class, and identifies major differences between classes.
 
-
-def aggregation_differences(X, y, agg_type=None):
+    :param X: Droplet data
+    :param y: Droplet classes
+    :param agg_type: Type of aggregation to perform on the set; "mean" computes the mean image, "var" the pixel-wise
+    variance
     """
-    Produces heatmaps of the 'average' sample of a class, and identifies major differences between classes
-    """
-    classes, avg = _aggregatae_mean_image(X, y, agg_type)
+    _classes, avg = _aggregatae_mean_image(X, y, agg_type)
     finals = []
     for k, v1 in avg.items():
         for _, v2 in avg.items():
@@ -119,22 +168,25 @@ def aggregation_differences(X, y, agg_type=None):
     plt.show()
 
 
-def aggr_vs_sample_difference(X, y, index, agg_type=None, plot_type="one"):
+def plot_sample_vs_mean(X, y, index, plot_type="one"):
     """
-    Produces heatmaps identifying differences between the "mean" image of a class and provided samples
-    :param y: sample labels
-    :param X: samples
-    :param index: iterable of indices extracted from X and compared against mean class images
-    :param agg_type: deprecated in method
-    :param plot_type: type of plot comparison; "one" visualizes only the relevant class, while "all" compares each
+    Displays heatmaps identifying differences between the "mean" image of a class and provided samples. Provides the
+    option to compare a single sample between its labelled class and all classes.
+
+    :param X: Droplet data
+    :param y: Droplet labels
+    :param index: Iterable sample indices from X to compare against the mean class images
+    :param plot_type: Plot comparison type; "one" visualizes only the relevant class, while "all" compares each
     sample against each class
     """
     samples = X[index, :]
     samples_y = y[index]
     X = np.delete(X, index, 0)
     y = np.delete(y, index, 0)
-    classes, avg = _aggregatae_mean_image(X, y, "mean")
+    _classes, avg = _aggregatae_mean_image(X, y, "mean")
     finals = []
+
+    # TODO: fuck this is some ugly ass code
     if plot_type == "one":
         for s, s_y in zip(samples, samples_y):  # compute difference between mean image & sample
             s = np.reshape(s, avg[s_y].shape)
@@ -166,13 +218,14 @@ def aggr_vs_sample_difference(X, y, index, agg_type=None, plot_type="one"):
             ax.set_ylabel(f"{str(index[row_index])} ({samples_y[row_index][:4].strip()})")
             ims = ax.imshow(i[1], aspect=.12, vmin=-1, vmax=1, cmap='coolwarm')
 
+    # Add labels, colorbar, etc
     fig.suptitle("\'Pixel-wise\' divergences between mean class and given samples")
     fig.supylabel("Sample Index, Class")
     fig.supxlabel("Image")
     axins = inset_axes(
         ax,
         width="10%",  # width: 10% of parent_bbox width
-        height="640%",  # height: 50%
+        height="640%",  # height: 50%  TODO: must be some better way than to hardcode height of colorbar
         loc="lower left",
         bbox_to_anchor=(1.05, 0., 1, 1),
         bbox_transform=ax.transAxes,
@@ -182,50 +235,59 @@ def aggr_vs_sample_difference(X, y, index, agg_type=None, plot_type="one"):
     plt.show()
 
 
-def epoch_performance(epochs):
+def plot_epoch_performance(n_epochs, labels, *metrics):
     """
-    Plots training & validation performance of a DL model over a number of epochs
+    Displays training & validation performance of a DL model over a number of epochs.
+
+    :param n_epochs: Number of epochs used for training
+    :param labels: Labels corresponding to each tracked metric; should always be same size as *metrics
     """
-    eps = list(range(1, len(epochs["train_loss"])+1))
+    eps = list(range(1, n_epochs+1))
+    assert len(labels) == len(metrics)
 
     plt.style.use("ggplot")
     plt.figure()
-    plt.plot(eps, epochs["train_loss"],  label="train_loss")
-    plt.plot(eps, epochs["val_loss"], label="val_loss")
-    plt.plot(eps, epochs["train_acc"], label="train_acc")
-    plt.plot(eps, epochs["val_acc"], label="val_acc")
-    plt.title("Loss/Accuracy on Dataset")
+    for metric, label in zip(metrics, labels):
+        plt.plot(eps, metric,  label=label)
+    plt.title("Loss/Accuracy by Epoch")
     plt.xlabel("Epoch #")
     plt.ylabel("Loss/Accuracy")
     plt.legend(loc="lower left")
     plt.show()
 
 
-def embedding_visualization(X, y, track_misclassified=True, method=""):
+def plot_embedding_visualization(X, y, known_misclassified=None, method="PCA or UMAP"):
     """
-    Displays 2d data embededdings, coloring according to class and labels according to index
+    Displays 2d data embededdings obtained via Dimensionality Reduction. Points are colored according to class and
+    are labelled according to index within the dataset.
+
+    :param X: Droplet data
+    :param y: Droplet classes
+    :param known_misclassified: Iterable of droplet indices; labels for these droplets are highlighted in red
+    :param method: str Dimensionality Reduction Technique
     """
     if type(X) is pd.DataFrame:
         X = X.to_numpy()
+    known_misclassified = [6, 9, 25, 32, 44, 61]  # In practice this line should be removed and added as an argument
     lab_to_col = {"DBM": "mediumblue", "GTM": "forestgreen", "LBM": "dodgerblue", "LBP+": "goldenrod"}
     colors = [lab_to_col[y[int(i)][:4].strip()] for i, _ in enumerate(X)]  # samples-to-color mapping
 
+    # Plot points
     plt.scatter(X[:, 0], X[:, 1], c=colors)
     ax = plt.gca()
     ax.set_aspect('equal', 'datalim')
     plt.title(f'{method} Dimensionality Reduction', fontsize=16)
 
-    known_misclassified = [6, 9, 25, 32, 44, 61]
-
+    # Add point annotations
     for x_p, y_p, i in zip(X[:, 0], X[:, 1], range(0, len(y))):
-        if track_misclassified and i in known_misclassified:
+        if known_misclassified is not None and i in known_misclassified:
             ax.annotate(i, (x_p, y_p), color="orangered", weight='bold')
         else:
             ax.annotate(i, (x_p, y_p))
     plt.show()
 
 
-def conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=None):
+def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=None):
     """
     Displays convolutional filters of the provided convolutional layers at a provided timestep
 
@@ -266,7 +328,7 @@ def conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=N
         plt.show()
 
 
-def convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
+def animate_convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
     """
     Produces an animation of the evolution of convolutional filters in .gif format. Title for the figure can be supplied
     via title=<str>.
@@ -291,16 +353,16 @@ def convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
     grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.1)
 
     # Generate animation frames & export
-    a = partial(conv_visualizations, convs=data, epochs=times, fig=fig, grid=grid,
-                title=kwargs["title"] if kwargs["title"] is not None else "",)
+    a = partial(plot_conv_visualizations, convs=data, epochs=times, fig=fig, grid=grid,
+                title=kwargs["title"] if kwargs["title"] is not None else "", )
     anim = animation.FuncAnimation(fig, a, frames=times, interval=int(1000 / f))
     anim.save(f"{out_dir}/{fname}.gif")
     logging.info(f"Exported convolutions-by-epoch gif to {out_dir}")
 
 
-def class_activation_maps(model, img, y, out_dir, fname):
+def plot_class_activation_maps(model, img, y, out_dir, fname):
     """
-    Produces and exports class activation maps for the provided image.
+    Displays and exports class activation maps for the provided image and model.
 
     :param model: CNN model with a GAP layer to extract information required for CAMs
     :param img: Droplet data to produce a CAM of
@@ -334,46 +396,25 @@ def class_activation_maps(model, img, y, out_dir, fname):
         plt.savefig(f"{out_dir}/CAM_{fname.zfill(3)}.png")
 
 
-def _cam_ups(final_conv, final_dense, top_class, size=None):
+def plot_training_validation_performance(t, v):
     """
-    Up samples the CAM to the same dimensionality as the original input image and scales CAM values to the (0,255).
-
-    :param final_conv: Input Image convolved by the final layer of convolutional filters
-    :param final_dense: Weights of the final dense layer
-    :param top_class: Index of the highest-probability class
-    :param size: Tuple shape to up-sample to; should be same dimensionality as our original image
-    """
-    if size is None:
-        size = [31, 131]
-    b, c, h, w = final_conv.shape
-    cams = []
-    for idx in top_class:  # for loop in case we want a CAM for each class
-        imd = final_conv.reshape((c, h*w))
-        cam = np.matmul(final_dense[idx], imd)  # Matrix multiply the weights of our top class with each filter
-        cam = cam.reshape(h, w)
-        cam = cam - np.min(cam)
-        cam = cam / np.max(cam)
-        cam = np.uint8(255 * cam)
-        cam = np.array(fromarray(cam).resize(size))
-        cams.append(cam)
-    return cams
-
-
-def train_vs_val(t, v):
-    """
-    2d scatterplot of training & validation performances. Provides picture of performance distribution across multiple
-    seeds. Credit to unutbu on SOF for the implementation of window-size-agnostic reference line.
+    Displays a 2d scatterplot of training & validation performances. Provides picture of performance distribution across
+    multiple seeds. Credit to unutbu on SOF for the implementation of window-size-agnostic reference line.
 
     :param t: Iterable training set performances
     :param v: Iterable validation set performances
     """
+    plt.style.use("ggplot")
     fig, ax = plt.subplots(figsize=(8., 8.))
+
+    # Plot points & reference line
     plt.scatter(x=t, y=v)
     line = lines.Line2D([0.0, 1.0], [0.0, 1.0], color='red')
     transform = ax.transAxes
     line.set_transform(transform)
     ax.add_line(line)
 
+    # Add titles, limits etc
     plt.title("Training vs Validation Performance Distribution")
     plt.xlim(0.0, 1.0)
     plt.xlabel("Training Accuracy")

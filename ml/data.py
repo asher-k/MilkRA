@@ -81,7 +81,7 @@ def run_pca(X, y, seed, num_components=2, verbose=False):
     X = pd.DataFrame(pca.fit_transform(dstd, y))
     logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
     if verbose:
-        plots.embedding_visualization(X, y, method="PCA")
+        plots.plot_embedding_visualization(X, y, method="PCA")
     return X
 
 
@@ -98,7 +98,7 @@ def run_umap(X, y, seed, num_components=2, verbose=False):
     umapper = umap.UMAP(n_components=num_components, random_state=seed)
     X_mapped = umapper.fit_transform(X)
     if verbose:
-        plots.embedding_visualization(X_mapped, y, method="UMAP")
+        plots.plot_embedding_visualization(X_mapped, y, method="UMAP")
     return X_mapped
 
 

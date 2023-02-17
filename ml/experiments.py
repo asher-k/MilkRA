@@ -79,8 +79,8 @@ def classify_baselines(args, X, y, logs_dir):
             results.to_csv(csv_name)
 
             if args.verbose:  # aggregate confusion matrix & misclassification rate figures & save to output directory
-                plt.samplewise_misclassification_rates(baselines, y, args, save_dir, model_name)
-                plt.confusion_matrix(cm, y, args, save_dir, model_name)
+                plt.plot_samplewise_misclassification_rates(baselines, 22, y, args, save_dir, model_name)
+                plt.plot_confusion_matrix(cm, y, args, save_dir, model_name)
 
             # format & save feature importances into a logging subdirectory
             if args.importance and not args.only_acc and model_name in ["logreg", "dt"]:
@@ -117,7 +117,7 @@ def classify_dl(args, X, y):
     :param X: Droplet data
     :param y: Droplet classes
     """
-    lr, bs, E, spl = 1e-4, 6, 50, (0.667, 0.333)  # 70-30 train-test split
+    lr, bs, E, spl = 1e-4, 6, 5, (0.667, 0.333)  # 70-30 train-test split
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     performances = {"train_acc": [], "val_acc": []}
 
@@ -164,17 +164,17 @@ def classify_dl(args, X, y):
         performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
 
         # Verbosity-enabled plotting
-        if args.verbose:  # export convolution visualizations
-            plt.epoch_performance(performance_log)
+        if args.verbose:
+            plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
             for i, d in enumerate(data):  # CAMs
-                plt.class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
-
-            conv1_trend = [v[0] for k, v in conevolution.items()]  # Evolution of convolutional filters
+                plt.plot_class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
+            # Plot evolution of convolutional filters
+            conv1_trend = [v[0] for k, v in conevolution.items()]
             logging.info(np.sum(np.abs(conv1_trend[0] - conv1_trend[-1])))
-            plt.convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=args.logs_dir, fname=f"{args.name}:{seed}_convolutions",
-                                     title=f"seed{seed}")
+            plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=args.logs_dir, title=f"seed{seed}",
+                                             fname=f"{args.name}:{seed}_convolutions", )
     # Trans-seed plotting
-    plt.train_vs_val(performances["train_acc"], performances["val_acc"])
+    plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
     if args.verbose:
         pass
 
@@ -271,7 +271,7 @@ def _train_epoch(model, loader, device, loss_fn, opt, log, verbose=False):
         train_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
 
     if verbose:  # not recommended; purely debugging
-        plt.conv_visualizations(model.conv1,)
+        plt.plot_conv_visualizations(model.conv1, )
     log["train_loss"].append(train_loss.item())
     log["train_acc"].append(train_acc)
     logging.info(f"train_loss {train_loss.item()}, train_acc {train_acc}")
