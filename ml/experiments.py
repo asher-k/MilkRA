@@ -25,6 +25,7 @@ def classify_baselines(args, X, y, logs_dir):
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
+    :param logs_dir: Subdirectory to export logs
     """
     baselines = Baselines()
 
@@ -117,7 +118,7 @@ def classify_dl(args, X, y):
     :param X: Droplet data
     :param y: Droplet classes
     """
-    lr, bs, E, spl = 1e-4, 6, 5, (0.667, 0.333)  # 70-30 train-test split
+    lr, bs, E, spl = 1e-4, 6, 1, (0.667, 0.333)  # 70-30 train-test split
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     performances = {"train_acc": [], "val_acc": []}
 
@@ -174,9 +175,10 @@ def classify_dl(args, X, y):
             plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=args.logs_dir, title=f"seed{seed}",
                                              fname=f"{args.name}:{seed}_convolutions", )
     # Trans-seed plotting
-    plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
+    logging.info(f"Final results on {args.num_states} seeds: {performances}")
     if args.verbose:
-        pass
+        plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
+        plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
 
 
 def classify_ts(args, X, y):

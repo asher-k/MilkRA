@@ -17,7 +17,7 @@ from data import format_name
 from sklearn.metrics import ConfusionMatrixDisplay
 
 
-def _aggregatae_mean_image(X, y, agg_type="mean"):
+def _aggregate_image(X, y, agg_type="mean"):
     """
     Computes a mean image from a set of samples.
 
@@ -136,7 +136,7 @@ def plot_mean_vs_mean(X, y, agg_type=None):
     :param agg_type: Type of aggregation to perform on the set; "mean" computes the mean image, "var" the pixel-wise
     variance
     """
-    _classes, avg = _aggregatae_mean_image(X, y, agg_type)
+    _classes, avg = _aggregate_image(X, y, agg_type)
     finals = []
     for k, v1 in avg.items():
         for _, v2 in avg.items():
@@ -183,7 +183,7 @@ def plot_sample_vs_mean(X, y, index, plot_type="one"):
     samples_y = y[index]
     X = np.delete(X, index, 0)
     y = np.delete(y, index, 0)
-    _classes, avg = _aggregatae_mean_image(X, y, "mean")
+    _classes, avg = _aggregate_image(X, y, "mean")
     finals = []
 
     # TODO: fuck this is some ugly ass code
@@ -292,9 +292,9 @@ def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, g
     Displays convolutional filters of the provided convolutional layers at a provided timestep
 
     :param t: Epoch to produce visualizations at (if final, should be 0)
-    :param convs:
+    :param convs: Iterable of convolutional filters across multiple timesteps
     :param epochs: Iterable of the range of epochs
-    :param title:
+    :param title: Title of the figure
     :param verbose: Enabling verbosity displays the plot
     :param fig: Figure instance (optional)
     :param grid: iterable instance of axes (optional)
@@ -419,5 +419,35 @@ def plot_training_validation_performance(t, v):
     plt.xlim(0.0, 1.0)
     plt.xlabel("Training Accuracy")
     plt.ylim(0.0, 1.0)
+    plt.ylabel("Validation Accuracy")
+    plt.show()
+
+
+def plot_training_validation_heatmap(t, v, t_size, v_size):
+    """
+    Displays a 2d heatmap of training & validation performances. Given the low number of samples, a scatterplot contains
+    multiple overlaps within a finite space; the heatmap corrects this pitfall by displaying hotspots in addition to
+    locations.
+
+    :param t: Iterable training set performances
+    :param v: Iterable validation set performances
+    :param t_size: Length of the training set
+    :param v_size: Length of the validation set
+    """
+    fig, ax = plt.subplots(figsize=(8., 8.), ncols=1)
+    t, v = [int(i*t_size) for i in t], [int((1-i)*v_size) for i in v]  # scales %-based accuracy to counts
+    img = np.zeros((v_size, t_size))  # define "blank" image with the dimensionalities of the highest possible counts
+    for i_t, i_v in zip(t, v):
+        img[i_v][i_t] += 1.0
+
+    # Plot heatmap & colorbar
+    p = ax.imshow(img, cmap="inferno")
+    ax.figure.colorbar(p, ax=ax, shrink=0.5)
+
+    # Set plot parameters
+    ax.set_xticks(np.arange(0, 41, 41/10), labels=[f"{n*10}%" for n in np.arange(0, 10, 1)], size=12)
+    ax.set_yticks(np.arange(0, 20, 20/10), labels=reversed([f"{n*10}%" for n in np.arange(1, 11, 1)]), size=12)
+    plt.title("Training vs Validation Performance Distribution")
+    plt.xlabel("Training Accuracy")
     plt.ylabel("Validation Accuracy")
     plt.show()
