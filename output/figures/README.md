@@ -34,6 +34,11 @@ One aspect of our analysis involves tracking the performance of particular sampl
 - [SVC_Sample_misclassifications_comp_pca.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/SVC_Sample_misclassifications_comp_pca.png) : Samplewise misclassification rates for an SVC model.
 - [SVC_Sample_misclassifications_comp_pca_filtered.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/SVC_Sample_misclassifications_comp_pca_filtered.png) : Samplewise misclassification rates for an SVC model with the worst-performing sample (probable outliers) of each class removed.
 
+### CNN Training vs Validation 
+To properly analyze the variance of our CNN models, we plot the final training and validation accuracies of 30 identical CMapNN models with a kernel size of 3x3. We produce several plots of our proposed datasets for comparison.
+- [DL-Overview_raw.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/DL-Overview_raw.png) : Compounded, raw data.
+- [DL_Overview_processed.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/DL_Overview_processed.png) : Compounded, processed data. Processed data averages over both sides of the droplet. Of interest is that < 30 points are visible on the plot, suggesting more consistent performance compared to the raw data.
+
 ## ``CAM`` plots
 A Class Activation Map (CAM) is a visualization of the impact convolutional filters have on certain regions of an image. These filters are obtained by extracting the final convolved image before the Global Average Pooling (GAP) layer. By extracting input weights from a fully-connected layer that takes the GAP features as input we obtain "weights" for each convolution-class pair. In our plots we display the CAM for the predicted class from a high-performance model composed of 3 convolutional blocks, which achieved 100% training accuracy and 95% validation accuracy.
 - [CAM/](https://github.com/asher-k/MilkRA/blob/main/output/figures/CAMs/)
