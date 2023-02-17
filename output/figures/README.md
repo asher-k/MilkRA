@@ -35,7 +35,7 @@ One aspect of our analysis involves tracking the performance of particular sampl
 - [SVC_Sample_misclassifications_comp_pca_filtered.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/SVC_Sample_misclassifications_comp_pca_filtered.png) : Samplewise misclassification rates for an SVC model with the worst-performing sample (probable outliers) of each class removed.
 
 ### CNN Training vs Validation 
-To properly analyze the variance of our CNN models, we plot the final training and validation accuracies of 30 identical CMapNN models with a kernel size of 3x3. We produce several plots of our proposed datasets for comparison.
+To properly analyze the variance of our CNN models, we plot the final training and validation accuracies of 30 identical CMapNN models with a kernel size of 3x3 trained over 50 epochs. We produce several plots of our proposed datasets for comparison.
 - [DL-Overview_raw.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/DL-Overview_raw.png) : Compounded, raw data.
 - [DL_Overview_processed.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/DL_Overview_processed.png) : Compounded, processed data. Processed data averages over both sides of the droplet. Of interest is that < 30 points are visible on the plot, suggesting more consistent performance compared to the raw data.
 
