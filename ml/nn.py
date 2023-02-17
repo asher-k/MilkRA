@@ -62,27 +62,27 @@ class WindowCNN(nn.Module):
 
 
 class CMapNN(nn.Module):
-    def __init__(self, num_classes):
+    def __init__(self, num_classes, ks):
         """
         Fully-convolutional NN with final dense layers replaced by Global Average Pooling
         """
         super(CMapNN, self).__init__()
         # Conv block 1; output 16c
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=(5, 5), stride=1, padding_mode='circular',
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=ks, stride=1, padding_mode='circular',
                                padding=1)
         self.relu1 = nn.ReLU()
         self.norm1 = nn.BatchNorm2d(self.conv1.out_channels)
         self.mpool1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # Conv block 2
-        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=(5, 5), stride=1, padding_mode='circular',
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=ks, stride=1, padding_mode='circular',
                                padding=1)
         self.relu2 = nn.ReLU()
         self.norm2 = nn.BatchNorm2d(self.conv2.out_channels)
         self.mpool2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # Conv block 3
-        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=(5, 5), stride=1, padding_mode='circular',
+        self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=ks, stride=1, padding_mode='circular',
                                padding=1)
         self.relu3 = nn.ReLU()
         self.norm3 = nn.BatchNorm2d(self.conv3.out_channels)

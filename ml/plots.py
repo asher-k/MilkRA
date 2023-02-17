@@ -5,6 +5,7 @@ import logging
 from PIL.Image import Image, fromarray
 import pandas as pd
 import numpy as np
+import matplotlib.lines as lines
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.animation as animation
@@ -229,6 +230,9 @@ def conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=N
     Displays convolutional filters of the provided convolutional layers at a provided timestep
 
     :param t: Epoch to produce visualizations at (if final, should be 0)
+    :param convs:
+    :param epochs: Iterable of the range of epochs
+    :param title:
     :param verbose: Enabling verbosity displays the plot
     :param fig: Figure instance (optional)
     :param grid: iterable instance of axes (optional)
@@ -262,11 +266,16 @@ def conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=N
         plt.show()
 
 
-def convolution_by_epoch(data, f, t, out, name, **kwargs):
+def convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
     """
-    Produces an animation of the evolution of convolutional filters in .gif format
+    Produces an animation of the evolution of convolutional filters in .gif format. Title for the figure can be supplied
+    via title=<str>.
 
-    :return:
+    :param data: Convolutional Filter data
+    :param f: FPS of the animated gif
+    :param t: Number of timesteps in the gif; should be equivalent to len(data)
+    :param out_dir: Export directory
+    :param fname: Name for the exported .gif file
     """
     # Setup writer
     writer = animation.writers['ffmpeg']
@@ -282,20 +291,22 @@ def convolution_by_epoch(data, f, t, out, name, **kwargs):
     grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.1)
 
     # Generate animation frames & export
-    a = partial(conv_visualizations, convs=data, epochs=times, title=kwargs["title"], fig=fig, grid=grid)
+    a = partial(conv_visualizations, convs=data, epochs=times, fig=fig, grid=grid,
+                title=kwargs["title"] if kwargs["title"] is not None else "",)
     anim = animation.FuncAnimation(fig, a, frames=times, interval=int(1000 / f))
-    anim.save(f"{out}/{name}.gif")
-    logging.info(f"Exported convolutions by epoch gif to {out}")
+    anim.save(f"{out_dir}/{fname}.gif")
+    logging.info(f"Exported convolutions-by-epoch gif to {out_dir}")
 
 
 def class_activation_maps(model, img, y, out_dir, fname):
     """
-    Produces and exports class activation maps for the provided image
+    Produces and exports class activation maps for the provided image.
 
     :param model: CNN model with a GAP layer to extract information required for CAMs
-    :param img: image to generate CAM
-    :param out_dir: output directory
-    :return:
+    :param img: Droplet data to produce a CAM of
+    :param y: Class for our img
+    :param out_dir: Export directory
+    :param fname: Name of our CAM file; should include indication of the sample index & seed (if applicable)
     """
     torch_img = torch.unsqueeze(torch.Tensor(img), 0)  # reshape from numpy to [1, ...] Tensor
     pred = torch.squeeze(torch.exp(model(torch_img)[0]))  # Remove from log space
@@ -310,9 +321,8 @@ def class_activation_maps(model, img, y, out_dir, fname):
     # Obtain final convolutional filters
     convs = model(torch_img, early_stopping=True)[0].cpu().detach().numpy()
 
-    # Obtain & visualize CAM
-    cam = _cam_upsample(convs, final_layer, [ind[0]], size=[31, 133])
-
+    # Obtain & visualize CAM(s)
+    cam = _cam_ups(convs, final_layer, [ind[0]], size=[31, 133])
     for m in cam:
         plt.cla()
         fig = plt.figure(figsize=(8., 8.))
@@ -324,9 +334,14 @@ def class_activation_maps(model, img, y, out_dir, fname):
         plt.savefig(f"{out_dir}/CAM_{fname.zfill(3)}.png")
 
 
-def _cam_upsample(final_conv, final_dense, top_class, size=None):
+def _cam_ups(final_conv, final_dense, top_class, size=None):
     """
-    Upsamples the CAM produced by the NN to be the same dimensionality as the original input image.
+    Up samples the CAM to the same dimensionality as the original input image and scales CAM values to the (0,255).
+
+    :param final_conv: Input Image convolved by the final layer of convolutional filters
+    :param final_dense: Weights of the final dense layer
+    :param top_class: Index of the highest-probability class
+    :param size: Tuple shape to up-sample to; should be same dimensionality as our original image
     """
     if size is None:
         size = [31, 131]
@@ -343,3 +358,25 @@ def _cam_upsample(final_conv, final_dense, top_class, size=None):
         cams.append(cam)
     return cams
 
+
+def train_vs_val(t, v):
+    """
+    2d scatterplot of training & validation performances. Provides picture of performance distribution across multiple
+    seeds. Credit to unutbu on SOF for the implementation of window-size-agnostic reference line.
+
+    :param t: Iterable training set performances
+    :param v: Iterable validation set performances
+    """
+    fig, ax = plt.subplots(figsize=(8., 8.))
+    plt.scatter(x=t, y=v)
+    line = lines.Line2D([0.0, 1.0], [0.0, 1.0], color='red')
+    transform = ax.transAxes
+    line.set_transform(transform)
+    ax.add_line(line)
+
+    plt.title("Training vs Validation Performance Distribution")
+    plt.xlim(0.0, 1.0)
+    plt.xlabel("Training Accuracy")
+    plt.ylim(0.0, 1.0)
+    plt.ylabel("Validation Accuracy")
+    plt.show()

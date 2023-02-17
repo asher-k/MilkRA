@@ -1,22 +1,21 @@
 import re
 import os
 import logging
+import plots
+import torch
+import umap
 import numpy as np
 import pandas as pd
 import sklearn.preprocessing as sklp
 from sklearn.decomposition import PCA
-import torch
-import umap
-from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset, DataLoader
-import plots
 
 
 class DropletDataset(Dataset):
     """
     Structured dataset for Torch models
     """
-    def __init__(self, X, y, transforms=False):
+    def __init__(self, X, y, transforms=None):
         self.droplets_frame = X
         self.droplets_label = y
         self.transforms = transforms
@@ -66,30 +65,35 @@ class SubdivTransform(object):
         return sample
 
 
-def run_pca(data, labels, seed, num_components=2, verbose=False):
+def run_pca(X, y, seed, num_components=2, verbose=False):
     """
-    Performs PCA on the provided data and labels
+    Performs PCA on the provided data and labels and displays a plot of the transformed points.
 
-    :param data: data to transform
-    :param labels: associated class labels
-    :param seed: emables deterministic results
+    :param X: Droplet data to transform
+    :param y: Droplet class labels
+    :param seed: For deterministic results
     :param num_components: Number of principle components to consider; anything 10 > x > 2 performs well, with 5 being +
-    :param verbose: True to display plot of the embedding (requires n_components = 2)
-    :return:
+    :param verbose: Enables the display of a plot of the embedding (requires n_components = 2)
     """
-    standardizer = sklp.StandardScaler().fit(data)
-    dstd = standardizer.transform(data)
+    standardizer = sklp.StandardScaler().fit(X)
+    dstd = standardizer.transform(X)
     pca = PCA(random_state=seed, n_components=num_components)  # >0.9 @ 2 PCs
-    data = pd.DataFrame(pca.fit_transform(dstd, labels))
+    X = pd.DataFrame(pca.fit_transform(dstd, y))
     logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
     if verbose:
-        plots.embedding_visualization(data, labels, method="PCA")
-    return data
+        plots.embedding_visualization(X, y, method="PCA")
+    return X
 
 
 def run_umap(X, y, seed, num_components=2, verbose=False):
     """
-    Performs UMAP dimensionality reduction and displays a plot of the transformed points
+    Performs UMAP dimensionality reduction and displays a plot of the transformed points.
+
+    :param X: Droplet data to transform
+    :param y: Droplet class labels
+    :param seed: For deterministic results
+    :param num_components: Number of principle components to consider; anything 10 > x > 2 performs well, with 5 being +
+    :param verbose: Enables the display of a plot of the embedding (requires n_components = 2)
     """
     umapper = umap.UMAP(n_components=num_components, random_state=seed)
     X_mapped = umapper.fit_transform(X)

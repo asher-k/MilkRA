@@ -18,14 +18,18 @@ from sklearn.model_selection import train_test_split
 from data import format_name, _col_order, run_pca, run_umap, DropletDataset, ToTensor, FloatTransform, SubdivTransform
 
 
-def classify_baselines(args, data, labels, logs_dir):
+def classify_baselines(args, X, y, logs_dir):
     """
     Classification experiment on baseline non-time series models
+
+    :param args: Command-line ArgParser
+    :param X: Droplet data
+    :param y: Droplet classes
     """
     baselines = Baselines()
 
     for model in baselines.m[args.model]:
-        for row in data.index:  # inits samplewise misclassification counts
+        for row in X.index:  # inits samplewise misclassification counts
             baselines.preddict[row] = (0., 0)
 
         # can infer model name from baseline classifier keys
@@ -34,19 +38,19 @@ def classify_baselines(args, data, labels, logs_dir):
         else:
             model_name = list(baselines.m.keys())[list(baselines.m.values()).index([model])]
 
-        state_data = data.copy()
+        state_data = X.copy()
         if args.features_selection == "top":  # since Percentile is deterministic no need to run @ each seed
             selector = SelectPercentile(score_func=mutual_info_classif, percentile=20)
-            selector.fit(state_data, labels)
+            selector.fit(state_data, y)
             state_data = pd.DataFrame(selector.transform(state_data))
 
         # obtain model results over n seeds
         r, cm, p, dt_top = [], [], [], []  # results, confusion matricies, feature importance, decision tree splits
         for state in nprand.randint(0, 99999, size=args.num_states):
             if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
-                state_data = run_pca(state_data, labels, state)
+                state_data = run_pca(state_data, y, state)
 
-            train_d, test_d, train_l, test_l = train_test_split(state_data, labels, test_size=0.3, stratify=labels)
+            train_d, test_d, train_l, test_l = train_test_split(state_data, y, test_size=0.3, stratify=y)
             baselines.data(train_d, train_l, test_d, test_l)
             result, c, _imp, _split = model(random_state=state,
                                             verbose=args.verbose,
@@ -75,8 +79,8 @@ def classify_baselines(args, data, labels, logs_dir):
             results.to_csv(csv_name)
 
             if args.verbose:  # aggregate confusion matrix & misclassification rate figures & save to output directory
-                plt.samplewise_misclassification_rates(baselines, labels, args, save_dir, model_name)
-                plt.confusion_matrix(cm, labels, args, save_dir, model_name)
+                plt.samplewise_misclassification_rates(baselines, y, args, save_dir, model_name)
+                plt.confusion_matrix(cm, y, args, save_dir, model_name)
 
             # format & save feature importances into a logging subdirectory
             if args.importance and not args.only_acc and model_name in ["logreg", "dt"]:
@@ -107,63 +111,81 @@ def classify_baselines(args, data, labels, logs_dir):
 
 def classify_dl(args, X, y):
     """
-    Classification experiment with DL models
+    Classification experiment with DL models.
+
+    :param args: Command-line ArgParser
+    :param X: Droplet data
+    :param y: Droplet classes
     """
-
-    torch.manual_seed(args.seed)
+    lr, bs, E, spl = 1e-4, 6, 50, (0.667, 0.333)  # 70-30 train-test split
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    lr, bs, E, spl = 1e-4, 6, 100, (0.667, 0.333)  # 70-30 train-test split
+    performances = {"train_acc": [], "val_acc": []}
 
-    # Prepare data and initialize training & test DataLoaders
-    X = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
-    y = np.array(y)
-    data = DropletDataset(X, y, transforms=[
-        ToTensor(), FloatTransform(), #SubdivTransform(),
-    ])
-    train_size, val_size = int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])
-    (trainData, testData) = random_split(data, [train_size, val_size],
-                                         generator=torch.Generator().manual_seed(args.seed))
-    trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
-    testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
-    trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
+    for index, seed in enumerate(nprand.randint(0, 99999, size=args.num_states)):
+        seed = int(seed)  # why????
+        nprand.seed(seed)
+        torch.manual_seed(seed)
+        logging.critical(f"Set Seed {index+1}, {seed}")
 
-    # init model, optimizer, logs
-    model = nets.CMapNN(4).to(device)
-    optimizer = Adam(model.parameters(), lr=lr)
-    loss_fn = nn.NLLLoss()
-    performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+        # Prepare data and initialize training & test DataLoaders
+        X_data = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
+        y_data = np.array(y)
+        data = DropletDataset(X_data, y_data, transforms=[
+            ToTensor(), FloatTransform(), #SubdivTransform(),
+        ])
+        tr_size, val_size = int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])
+        (trainData, testData) = random_split(data, [tr_size, val_size], generator=torch.Generator().manual_seed(seed))
+        trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
+        testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
+        trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
-    # begin training over epochs & produce visualization(s)
-    conevolution = {}
-    for e in range(0, E):
-        logging.info(f"Epoch: {e}")
-        performance_log = _train_step(model, trainLoader, device, loss_fn, optimizer, performance_log)  # training
-        performance_log = _val_step(model, testLoader, device, loss_fn, performance_log)  # validation
-        conevolution[e] = [np.copy(model.conv1.weight.detach().numpy()),
-                           np.copy(model.conv2.weight.detach().numpy()),
-                           ]
+        # init model, optimizer, logs
+        model = nets.CMapNN(num_classes=4, ks=3).to(device)
+        optimizer = Adam(model.parameters(), lr=lr)
+        loss_fn = nn.NLLLoss()
+        performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+        conevolution = {}  # convoluton + evolution
 
-    # compute mean performances
-    for k1, k2 in zip(["train_loss", "val_loss"], ["train_acc", "val_acc"]):
-        performance_log[k1] = [a/trainSteps if "train" in k1 else a/valSteps for a in performance_log[k1]]
-        performance_log[k2] = [a/train_size if "train" in k2 else a/val_size for a in performance_log[k2]]
-        logging.info(f"Final {k1}\t{round(performance_log[k1][-1], 3)}\n"
-                     f"Final {k2}\t\t{round(performance_log[k2][-1], 3)}")
+        # begin training & track convolutional filters at each epoch
+        for e in range(0, E):
+            logging.info(f"Epoch: {e}")
+            performance_log = _train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
+            performance_log = _validate(model, testLoader, device, loss_fn, performance_log)
+            if args.verbose:
+                conevolution[e] = [np.copy(model.conv3.weight.detach().numpy())]
 
-    # plt.epoch_performance(performance_log)
-    for i, d in enumerate(data):
-        plt.class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
+        # compute actual performances by aggregating across batches/steps, then save for trans-seed tracking
+        for k1, k2 in zip(["train_loss", "val_loss"], ["train_acc", "val_acc"]):
+            performance_log[k1] = [a/trainSteps if "train" in k1 else a/valSteps for a in performance_log[k1]]
+            performance_log[k2] = [a/tr_size if "train" in k2 else a/val_size for a in performance_log[k2]]
+            logging.info(f"Final {k1}\t{round(performance_log[k1][-1], 3)}")
+            logging.info(f"Final {k2}\t\t{round(performance_log[k2][-1], 3)}")
+        performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
+        performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
 
-    if args.verbose:  # export convolution visualizations
-        conv1_trend = [v[0] for k, v in conevolution.items()]
-        logging.info(np.sum(np.abs(conv1_trend[0] - conv1_trend[-1])))
-        plt.convolution_by_epoch(conv1_trend, f=5, t=E, out=args.logs_dir, name=f"{args.name}:{args.seed}_convolutions",
-                                 title=f"seed{args.seed}")
+        # Verbosity-enabled plotting
+        if args.verbose:  # export convolution visualizations
+            plt.epoch_performance(performance_log)
+            for i, d in enumerate(data):  # CAMs
+                plt.class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
+
+            conv1_trend = [v[0] for k, v in conevolution.items()]  # Evolution of convolutional filters
+            logging.info(np.sum(np.abs(conv1_trend[0] - conv1_trend[-1])))
+            plt.convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=args.logs_dir, fname=f"{args.name}:{seed}_convolutions",
+                                     title=f"seed{seed}")
+    # Trans-seed plotting
+    plt.train_vs_val(performances["train_acc"], performances["val_acc"])
+    if args.verbose:
+        pass
 
 
 def classify_ts(args, X, y):
     """
-    Classification experiment with Time-series models
+    Classification experiment with Time-series models.
+
+    :param args: Command-line ArgParser
+    :param X: Droplet data
+    :param y: Droplet classes
     """
     models = TSModels()
     nprand.seed(0)
@@ -201,7 +223,11 @@ def classify_ts(args, X, y):
 
 def clustering(args, X, y):
     """
-    Clustering baseline experiment
+    Clustering experiment on our PCA'd data.
+
+    :param args: Command-line ArgParser
+    :param X: Droplet data
+    :param y: Droplet classes
     """
     clusters = Clustering()
     if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
@@ -213,20 +239,30 @@ def clustering(args, X, y):
     clusters.dendrogram(model)
 
 
-def _train_step(model, dataLoader, device, loss_fn, opt, log, verbose=False):
+def _train_epoch(model, loader, device, loss_fn, opt, log, verbose=False):
     """
-    Performs one training step for the provided NN model
+    Performs one training epoch for the provided NN model.
+
+    :param model: CNN or other PyTorch NN Module to train
+    :param loader: DataLoader containing training data
+    :param device: Current device to run on
+    :param loss_fn: Callable Loss Function; requires inputs in the form of (pred_label, act_label)
+    :param opt: Model Optimizer
+    :param log: Dict containing training/validation keys for tracking
+    :param verbose: Enables
+
+    :return: Log updated with epoch statistics
     """
     model.train()
     train_loss, train_acc = 0, 0
 
     # loop over the training set
-    for (x, y) in dataLoader:
+    for (x, y) in loader:
         (x, y) = (x.to(device), y.to(device))
 
         pred, _extra = model(x)
         loss = loss_fn(pred, y)
-        opt.zero_grad()  # 0 gradient
+        opt.zero_grad()  # 0 the gradient
         loss.backward()  # backprop
         opt.step()  # update weights
 
@@ -242,19 +278,26 @@ def _train_step(model, dataLoader, device, loss_fn, opt, log, verbose=False):
     return log
 
 
-def _val_step(model, dataLoader, device, loss_fn, log):
+def _validate(model, loader, device, loss_fn, log):
     """
     Verifies model performance on the validation set
+
+    :param model: CNN or other PyTorch NN Module to evaluate
+    :param loader: DataLoader containing validation data
+    :param device: Current device to run on
+    :param loss_fn: Callable Loss Function; requires inputs in the form of (pred_label, act_label)
+    :param log: Dict containing training/validation keys for tracking
+
+    :return: Log updated with validation statistics
     """
     val_loss, val_acc = 0, 0
     with torch.no_grad():
         model.eval()
-        for x, y in dataLoader:
+        for x, y in loader:
             x, y = (x.to(device), y.to(device))
             pred, _extra = model(x)
             val_loss += loss_fn(pred, y)
             val_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
-
     log["val_loss"].append(val_loss.item())
     log["val_acc"].append(val_acc)
     logging.info(f"val_loss {val_loss.item()}, val_acc {val_acc}")
