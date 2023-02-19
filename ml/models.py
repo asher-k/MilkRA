@@ -13,6 +13,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier, plot_tree
+
 from sktime.classification.distance_based import KNeighborsTimeSeriesClassifier
 from sktime.classification.interval_based import TimeSeriesForestClassifier
 from sktime.classification.dictionary_based import TemporalDictionaryEnsemble
@@ -22,58 +23,11 @@ from sktime.transformations.panel.compose import ColumnConcatenator
 from sktime.classification.hybrid import HIVECOTEV2
 
 
-def _results_logging(preds, trues, probs=None, name=None, verbose=False):
-    """
-    Logs classifier predictions and provides formatted statistics about performance
-
-    :param preds: predicted labels
-    :param trues: true labels
-    :param probs: predicted label probabilities
-    :param name: string identifier of model
-    :param verbose: enables logging & confusion matrix
-    :return: [predictive statistics of the model, confusion matrix]
-    """
-    results = {}
-    results.update({"Accuracy": met.accuracy_score(trues, preds)})
-    results.update({"ROC AUC": np.NaN if probs is None else met.roc_auc_score(trues, probs, multi_class="ovo")})
-    class_stats = met.classification_report(trues, preds, output_dict=True, zero_division=0)
-
-    cm = None
-    if verbose:
-        cm = met.confusion_matrix(trues, preds)
-    for var_to_save in ['precision', 'recall']:
-        [results.update({"{i}_{var}".format(i=i, var=var_to_save): class_stats[i][var_to_save]}) for i in class_stats if type(class_stats[i]) is dict]
-    results = {k: v for k, v in results.items() if "macro" not in k}  # remove duplicated results
-    return results, cm
-
-
-def _seed_decorator(func):
-    """
-    Decorator for setting up seed values outside of model functions
-
-    :param func: function (model) to wrap seed setup
-    :return: results of wrapped model
-    """
-    def execute(*args, **kwargs):
-        state = kwargs["random_state"]
-        nprand.seed(state)
-        return func(*args, **kwargs)
-    return execute
-
-
-def _decorate_and_aggregate_models(m):
-    """
-    Aggregates baselines to enable one-line testing of all and decorates each baseline with the seed decorator. This
-    method should be run prior to the execution of any baseline to ensure results are truly random and repeatable.
-
-    :return:
-    """
-    m.update({"all": [i[0] for i in m.values()]})
-    [m.update({k: [_seed_decorator(m) for m in m[k]]}) for k in m.keys()]
-    return m
-
-
 class Clustering:
+    """
+    Clustering methods applied to the Droplet dataset. Follows the same class structure as our classification classes,
+    with a notable lack of training & testing classes and limited logging.
+    """
     def __init__(self):
         self.m = self.models()
         self.samples = None
@@ -81,7 +35,9 @@ class Clustering:
 
     def models(self):
         """
-        Initializes clustering methods for evaluation
+        Assigns links between command-line model names and their respective functions.
+
+        :return: Dict of corresponding names and functions
         """
         m = {
             "agglomerative": [self.agglomerative]
@@ -90,17 +46,32 @@ class Clustering:
 
     def data(self, d, l):
         """
-        Updates samples & labels for clustering and plotting functions
+        Updates model samples & labels for clustering and plotting functions.
+
+        :param d: Droplet data
+        :param l: Droplet labels
         """
         self.samples = d
         self.labels = [lab[:4].strip() for lab in l]  # trim class labels for neatness
 
-    def dendrogram(self, model, **kwargs):
+    def agglomerative(self, **kwargs):
         """
-        Creates a linkage matrix and plots a dendrogram of the provided model.
+        Agglomerative Hierarchical Clustering method.
 
-        Extended from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html
+        :return: Trained clustering model
         """
+        ahc = AgglomerativeClustering(distance_threshold=0, n_clusters=None)
+        ahc.fit(self.samples, self.labels)
+        return ahc
+
+    def plot_dendrogram(self, model, **kwargs):
+        """
+        Displays a dendrogram of the provided clustering model. Extended from
+        https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html.
+
+        :param model:
+        """
+        # Compute linkage matrix
         counts = np.zeros(model.children_.shape[0])
         n_samples = len(model.labels_)
         for i, merge in enumerate(model.children_):
@@ -111,43 +82,40 @@ class Clustering:
                 else:
                     current_count += counts[child_idx - n_samples]
             counts[i] = current_count
-
         linkage_matrix = np.column_stack([model.children_, model.distances_, counts]).astype(float)
+
         # Plot the corresponding dendrogram
         dendrogram(linkage_matrix, **kwargs)
-
-        # extra: colour labels according to class
+        # Extra: colour labels according to class
         lab_to_col = {"DBM": "mediumblue", "GTM": "forestgreen", "LBM": "dodgerblue", "LBP+": "goldenrod"}
         ax = plt.gca()
         xlbls = ax.get_xmajorticklabels()
         for lbl in xlbls:
             lbl.set_color(lab_to_col[self.labels[int(lbl.get_text())]])
 
+        # Display with colour labels
         patches = [mpatches.Patch(color=v, label=k) for k, v in lab_to_col.items()]
         ax.legend(handles=patches)
         plt.show()
 
-    def agglomerative(self, **kwargs):
-        """
-        Agglomerative Hierarchical Clustering
-        """
-        ahc = AgglomerativeClustering(distance_threshold=0, n_clusters=None)
-        ahc.fit(self.samples, self.labels)
-        return ahc
-
 
 class Baselines:
+    """
+    Non-time series ML baselines. Tracks sample-by-sample prediction of models over multiple runs.
+    """
     def __init__(self):
         self.m = self.models()
         self.train_x = None
         self.train_y = None
         self.test_x = None
         self.test_y = None
-        self.preddict = {}
+        self.preddict = {}  # Sample-wise tracking here
 
     def models(self):
         """
-        Initializes baseline model functions for evaluation (see Asher for hyperparameter reasoning).
+        Assigns links between command-line model names and their respective functions.
+
+        :return: Dict of corresponding names and functions
         """
         m = {
             "logreg": [self.logreg],
@@ -162,7 +130,12 @@ class Baselines:
 
     def data(self, tax, tay, tex, tey):
         """
-        Updates train & test datasets used by the models
+        Updates the training & validation datasets used by the models.
+
+        :param tax: Iterable Training data
+        :param tay: Iterable Training labels
+        :param tex: Iterable Validation data
+        :param tey: Iterable Validation labels
         """
         self.train_x = tax
         self.train_y = tay
@@ -171,7 +144,7 @@ class Baselines:
 
     def logreg(self, **kwargs):
         """
-        Logistic Regression model
+        Logistic Regression model.
         """
         lr = LogisticRegression(random_state=kwargs['random_state'])  # no convergence at iters=100
         lr.fit(self.train_x, self.train_y)
@@ -179,7 +152,7 @@ class Baselines:
 
     def nbayes(self, **kwargs):
         """
-        Naive Bayes model
+        Naive Bayes model.
         """
         nb = GaussianNB()
         nb.fit(self.train_x, self.train_y)
@@ -187,7 +160,7 @@ class Baselines:
 
     def dtree(self, **kwargs):
         """
-        Decision Tree Classifier
+        Decision Tree Classifier. Verbosity can be enabled in kwargs, which produces a DT visualization for the model.
         """
         state = kwargs["random_state"]
         dt = DecisionTreeClassifier(max_features=min(4, len(self.train_x.columns)),
@@ -201,16 +174,15 @@ class Baselines:
 
     def knn(self, **kwargs):
         """
-        K-Nearest Neighbor algorithm
+        K-Nearest Neighbor algorithm.
         """
-        kn = KNeighborsClassifier(n_neighbors=5,
-                                  weights='distance')
+        kn = KNeighborsClassifier(n_neighbors=5, weights='distance')
         kn.fit(self.train_x, self.train_y)
         return self.predict_and_results(model=kn, **kwargs)
 
     def svc(self, **kwargs):
         """
-        Support Vector Classifier
+        Support Vector Classifier.
         """
         vec = SVC(kernel='rbf', probability=True)
         vec.fit(self.train_x, self.train_y)
@@ -218,7 +190,7 @@ class Baselines:
 
     def mlp(self, **kwargs):
         """
-        Multilayer Perceptron
+        Multilayer Perceptron.
         """
         per = MLPClassifier(hidden_layer_sizes=(32, 16, 8),
                             learning_rate='adaptive',
@@ -232,7 +204,7 @@ class Baselines:
         Provides general functionalities for the prediction & results of trained models, with keywords enabling specific
         functionalities including importance tracking & DT analysis.
 
-        :param model: trained ML baseline
+        :param model: Trained ML baseline
         :return: statistics on model performance, confusion matrix, feature coefficients, feature splits (DT only)
         """
         preds = model.predict(self.test_x)
@@ -259,7 +231,11 @@ class Baselines:
         return res, cm, importance, splits
 
 
-class TSModels:
+class TSBaselines:
+    """
+    Time-series baseline models. Note this requires a different approach to preprocessing than non-time series models,
+    see data.py/load for details.
+    """
     def __init__(self):
         self.m = self.models()
         self.train_x = None
@@ -269,7 +245,9 @@ class TSModels:
 
     def models(self):
         """
-        Initializes dict of time-series models for streamlined testing.
+        Assigns links between command-line model names and their respective functions.
+
+        :return: Dict of corresponding names and functions
         """
         m = {"knn": [self.KNN],
              "forest": [self.Forest],
@@ -283,9 +261,12 @@ class TSModels:
 
     def data(self, tax, tay, tex, tey):
         """
-        Updates train & test datasets used by the models
+        Updates the training & validation datasets used by the models.
 
-        :return:
+        :param tax: Iterable Training data
+        :param tay: Iterable Training labels
+        :param tex: Iterable Validation data
+        :param tey: Iterable Validation labels
         """
         self.train_x = tax
         self.train_y = tay
@@ -294,7 +275,7 @@ class TSModels:
 
     def KNN(self, **kwargs):
         """
-        K-Nearest Neighbors Time-series Classifier
+        K-Nearest Neighbors Time-series Classifier.
         """
         knn = KNeighborsTimeSeriesClassifier(n_neighbors=5)
         knn.fit(self.train_x, self.train_y)
@@ -302,7 +283,7 @@ class TSModels:
 
     def Forest(self, **kwargs):
         """
-        Time-Series Forest Classifier
+        Time-Series Forest Classifier.
         """
         steps = [
             ("concatenate", ColumnConcatenator()),  # TSF requires concatenation of columns
@@ -315,7 +296,7 @@ class TSModels:
 
     def tde(self, **kwargs):
         """
-        Temporal Dictionary Ensemble (BOSS) classifier
+        Temporal Dictionary Ensemble (BOSS) classifier.
         """
         cb = TemporalDictionaryEnsemble(n_parameter_samples=250, max_ensemble_size=50, randomly_selected_params=50,
                                         random_state=kwargs["random_state"], time_limit_in_minutes=1)
@@ -324,7 +305,7 @@ class TSModels:
 
     def rise(self, **kwargs):
         """
-        Random Interval Spectral Ensemble Classifier
+        Random Interval Spectral Ensemble Classifier.
         """
         steps = [
             ("concatenate", ColumnConcatenator()),  # TSF requires concatenation of columns
@@ -336,7 +317,7 @@ class TSModels:
 
     def shapelet(self, **kwargs):
         """
-        Shapelet Transform Classifier
+        Shapelet Transform Classifier.
         """
         stc = ShapeletTransformClassifier(random_state=kwargs["random_state"], time_limit_in_minutes=1)
         stc.fit(self.train_x, self.train_y)
@@ -344,10 +325,8 @@ class TSModels:
 
     def hivecote(self, **kwargs):
         """
-        HIVE-COTE V2 Classifier
-
-        Note that performance is poor owing to the ensemble models and a full K=20 validation scheme may not be tenable
-        in the short-term
+        HIVE-COTE V2 Classifier. Note that performance is poor owing to the ensemble models and a full K=20 validation
+        scheme may not be tenable in the short-term.
         """
         hc2 = HIVECOTEV2(n_jobs=-1, random_state=kwargs["random_state"])
         hc2.fit(self.train_x, self.train_y)
@@ -355,12 +334,65 @@ class TSModels:
 
     def predict_and_results(self, mod, **kwargs):
         """
-        Provides general functionalities for the prediction & results of trained models
+        Provides general functionalities for the prediction & results of trained models.
 
-        :param mod: trained ML baseline
+        :param mod: Trained ML baseline
         :return: statistics on model performance, confusion matrix of model
         """
         preds = mod.predict(self.test_x)
         probs = mod.predict_proba(self.test_x)
         res, cm = _results_logging(preds, self.test_y, probs, name=str(type(mod)), verbose=kwargs['verbose'])
         return res, cm
+
+
+def _results_logging(preds, trues, probs=None, name=None, verbose=False):
+    """
+    Logs classifier predictions and provides formatted statistics about performance.
+
+    :param preds: Predicted labels
+    :param trues: True labels
+    :param probs: Predicted label probabilities
+    :param name: String identifier of model; deprecated
+    :param verbose: Enables logging & confusion matrix
+    :return: Tuple of predictive statistics of the model, confusion matrix
+    """
+    results = {}
+    results.update({"Accuracy": met.accuracy_score(trues, preds)})
+    results.update({"ROC AUC": np.NaN if probs is None else met.roc_auc_score(trues, probs, multi_class="ovo")})
+    class_stats = met.classification_report(trues, preds, output_dict=True, zero_division=0)
+
+    cm = None
+    if verbose:
+        cm = met.confusion_matrix(trues, preds)
+    for var_to_save in ['precision', 'recall']:
+        [results.update({"{i}_{var}".format(i=i, var=var_to_save): class_stats[i][var_to_save]}) for i in class_stats if
+         type(class_stats[i]) is dict]
+    results = {k: v for k, v in results.items() if "macro" not in k}  # remove duplicated results
+    return results, cm
+
+
+def _seed_decorator(func):
+    """
+    Decorator for setting up seed values outside model functions.
+
+    :param func: Function (model) to wrap seed setup
+    :return: results of wrapped model
+    """
+    def execute(*args, **kwargs):
+        state = kwargs["random_state"]
+        nprand.seed(state)
+        return func(*args, **kwargs)
+    return execute
+
+
+def _decorate_and_aggregate_models(m):
+    """
+    Aggregates baselines to enable one-line testing of all models and decorates each baseline with the seed decorator.
+    This method should be run prior to the execution of any baseline to ensure results are truly random and repeatable.
+
+    :param m: Iterable of model functions
+    :return: m Appended with the aggregated model functions
+    """
+    m.update({"all": [i[0] for i in m.values()]})
+    [m.update({k: [_seed_decorator(m) for m in m[k]]}) for k in m.keys()]
+    return m

@@ -4,15 +4,13 @@ import logging
 import pandas as pd
 import numpy as np
 import numpy.random as nprand
-import matplotlib.pyplot as plt
 import plots as plt
-from sklearn.metrics import ConfusionMatrixDisplay
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch import nn
 import nn as nets
-from models import Baselines, Clustering, TSModels
+from models import Baselines, Clustering, TSBaselines
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
 from data import format_name, _col_order, run_pca, run_umap, DropletDataset, ToTensor, FloatTransform, SubdivTransform
@@ -118,7 +116,7 @@ def classify_dl(args, X, y):
     :param X: Droplet data
     :param y: Droplet classes
     """
-    lr, bs, E, spl = 1e-4, 6, 1, (0.667, 0.333)  # 70-30 train-test split
+    lr, bs, E, spl = 1e-4, 6, 50, (0.667, 0.333)  # 70-30 train-test split
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     performances = {"train_acc": [], "val_acc": []}
 
@@ -141,7 +139,8 @@ def classify_dl(args, X, y):
         trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
         # init model, optimizer, logs
-        model = nets.CMapNN(num_classes=4, ks=3).to(device)
+        ks = 3 if args.type == "processed" else 5
+        model = nets.CMapNN(num_classes=4, kernel_size=ks).to(device)
         optimizer = Adam(model.parameters(), lr=lr)
         loss_fn = nn.NLLLoss()
         performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
@@ -176,20 +175,24 @@ def classify_dl(args, X, y):
                                              fname=f"{args.name}:{seed}_convolutions", )
     # Trans-seed plotting
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
+    plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
+    plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
     if args.verbose:
         plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
         plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
 
 
-def classify_ts(args, X, y):
+def classify_ts(args, X, y, logs_dir):
     """
     Classification experiment with Time-series models.
 
+    :param logs_dir:
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
+    :param logs_dir: Logging directory for visualization export
     """
-    models = TSModels()
+    models = TSBaselines()
     nprand.seed(0)
 
     for model in models.m[args.model]:
@@ -214,13 +217,8 @@ def classify_ts(args, X, y):
         logging.info(results)
 
         # display & save confusion matrix
-        plt.clf()
-        cm = np.sum(cm, axis=0)
-        cm = np.round(cm / np.sum(cm, axis=1), 3)
-        cm_display = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=sorted([l[:4] for l in set(y)]))
-        cm_display.plot()
-        plt.savefig(f"cm_{args.model}{args.name}.png")
-        plt.show()
+        if args.verbose:
+            plt.plot_confusion_matrix(cm, y, args, logs_dir, mname=args.name)
 
 
 def clustering(args, X, y):
@@ -238,7 +236,7 @@ def clustering(args, X, y):
     clusters.data(X, y)
     model = clusters.m[args.model][0]
     model = model()
-    clusters.dendrogram(model)
+    clusters.plot_dendrogram(model)
 
 
 def _train_epoch(model, loader, device, loss_fn, opt, log, verbose=False):

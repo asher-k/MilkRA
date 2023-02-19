@@ -8,12 +8,13 @@ import numpy as np
 import pandas as pd
 import sklearn.preprocessing as sklp
 from sklearn.decomposition import PCA
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
 
 class DropletDataset(Dataset):
     """
-    Structured dataset for Torch models
+    Structured dataset for Torch models. Enables retrieval of droplet labels and droplet time-series data and allows
+    for modification through the use of transformations.
     """
     def __init__(self, X, y, transforms=None):
         self.droplets_frame = X
@@ -21,9 +22,20 @@ class DropletDataset(Dataset):
         self.transforms = transforms
 
     def __len__(self):
+        """
+        Computes the number of items in the Dataset.
+
+        :return: Int
+        """
         return len(self.droplets_frame)
 
     def __getitem__(self, idx):
+        """
+        Retrieves and transforms the Dataset item at the provided index.
+
+        :param idx: Int index to retrieve item at
+        :return: Tensor item at idx, transformed by all assigned transformations
+        """
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
@@ -41,24 +53,43 @@ class ToTensor(object):
     Transformation that converts our 3d NumPy arrays into Tensors.
     """
     def __call__(self, sample):
+        """
+        Converts a NumPy sample to a Tensor.
+
+        :param sample: NumPy sample to convert
+        :return: Converted sample
+        """
         sample = torch.from_numpy(sample)
         return sample
 
 
 class FloatTransform(object):
     """
-    Transformation that converts all values to float32 to ensure Torch compatability
+    Transformation that converts all values in a 3d numpy array to float32 to ensure Torch compatability.
     """
     def __call__(self, sample):
+        """
+        Performs the float conversion.
+
+        :param sample: NumPy sample to convert
+        :return: Converted sample
+        """
         sample = np.array([np.array([np.array([np.float32(val) for val in r]) for r in c]) for c in sample])
         return sample
 
 
 class SubdivTransform(object):
     """
-    Subdivides the provided image into N square subwindows, discarding any incomplete windows
+    Subdivides the provided image into N square windows, discarding any incomplete windows.
     """
     def __call__(self, sample, axis=2):
+        """
+        Performs the image subdivision.
+
+        :param sample: Tensor sample to convert
+        :param axis: Axis to perform the subdivision across
+        :return: NumPy array of the subdivided image
+        """
         subdiv_size = sample.shape[axis]
         n_subdivs = sample.shape[1] // subdiv_size
         sample = np.array([sample[:, subdiv_size*n:subdiv_size*(n+1), :] for n in range(0, n_subdivs)])
@@ -104,12 +135,13 @@ def run_umap(X, y, seed, num_components=2, verbose=False):
 
 def format_name(arg, d=None, ext=None):
     """
-    Produces a formatted file name
+    Produces a formatted file name by prepending experiment parameters taken from command-line arguments and the export
+    directory while appending the file extension.
 
-    :param arg: command-line arguments used to construct file name
-    :param d: export directory prepended to name
-    :param ext: file extension appended to name
-    :return:
+    :param arg: Command-line arguments used to construct file name
+    :param d: Export directory prepended to name
+    :param ext: File extension appended to name
+    :return: The final file name
     """
     fname = "{save_dir}{name}.{model}.{type}.{norm}.{avg}{only}{ext}"
     fname = fname.format(
@@ -127,8 +159,11 @@ def format_name(arg, d=None, ext=None):
 
 def load(data_dir, data_type, **kwargs):
     """
-    Loads preprocessed samples of droplet sequences. This involves normalization, feature selection, reshaping etc. per
-    values of **kwargs
+    Loads preprocessed samples of droplet sequences from the provided directory and data type. Normalization, feature
+    selection, reshaping etc. are enabled through kwargs.
+
+    :param data_dir: Directory to read droplet samples from
+    :param data_type: String either "processed" or "raw"
 
     :return: DataFrame dataset, List labels
     """
@@ -138,7 +173,7 @@ def load(data_dir, data_type, **kwargs):
         class_dir = "{d}/{c}".format(d=data_dir, c=c)
         seqs, index_cols = [], []
         files = sorted(os.listdir(class_dir+"/"))
-        for f in files:  # individually load each .csv file
+        for f in files:  # load each sample's .csv file sequentially
             file_dir = "{c}/{f}/".format(c=class_dir, f=f)
             files = os.listdir(file_dir)
             file = list(filter(lambda fl: data_type+".csv" in fl, files))
@@ -147,7 +182,7 @@ def load(data_dir, data_type, **kwargs):
             seqs.append(file)
 
         [norm_consts.append(s.iloc[0, i]) for s, i in zip(seqs, index_cols)]  # update normalization constant
-        seqs = [s[_col_order(data_type)] for s in seqs]  # reshape column orders
+        seqs = [s[_col_order(data_type)] for s in seqs]  # reshape column orders according to dataset used
 
         if kwargs['only'] is not None:  # row selection; irrelevant rows are discarded
             seqs = [i.iloc[kwargs['only'], :] for i in seqs]
@@ -159,7 +194,7 @@ def load(data_dir, data_type, **kwargs):
         else:
             seqs = [i.iloc[:900, :] for i in seqs]
 
-        if kwargs['features'] is not None:  # reduce features to indicies
+        if kwargs['features'] is not None:  # reduce features to selected indicies
             seqs = [i.iloc[:, kwargs['features']] for i in seqs]
         if kwargs['centre_avg']:  # get mean over centre 3 observations and drop original observations
             to_avg = ["dl_height_midpoint", "2l_to_2r", "1l_to_1r"]
@@ -192,10 +227,10 @@ def load(data_dir, data_type, **kwargs):
 
 def _col_order(data_type):
     """
-    Returns constants representing column orders defined externally by the data
+    Returns constants representing column orders defined externally by the data.
 
-    :param data_type: type of data being used: either raw or processed
-    :return: column orders for the corresponding dataset
+    :param data_type: Type of data being used: either raw or processed.
+    :return: List column orders for the corresponding dataset
     """
     if data_type == "processed":
         return ['edge_4_r_to_edge_4_l', 'edge_3_r_to_edge_3_l', '11l_to_11r', 'edge_2_r_to_edge_2_l',
@@ -208,11 +243,11 @@ def _col_order(data_type):
 
 def _parse_ranges(ranges, split=":"):
     """
-    Parses user-provided row ranges in --load_ranges
+    Parses user-provided timestep ranges in the command-line argument --load_ranges.
 
     :param ranges: List of string-formatted ranges
-    :param split: character to split ranges with; assumed to use default ':'
-    :return:
+    :param split: Character to split ranges with; assumed to use default ':'
+    :return: List of numeric ranges sorted
     """
     parsed = set()
     for ur in ranges:
@@ -225,9 +260,10 @@ def _parse_ranges(ranges, split=":"):
 
 def _label_to_index(label):
     """
-    Converts string label to numeric representation
+    Converts string label of a sample to a numeric representation.
 
-    :return: numeric representation of the label
+    :param label: String label of the data; assumed to be unaltered from the four classes provided in the data directory
+    :return: Int representation of the label
     """
     map_dict = {"DBM 1000mA Repeats": 0, "GTM 1000mA Repeats": 1, "LBM 1000mA Repeats": 2, "LBP+ 1000mA Repeats": 3}
     return map_dict[label]

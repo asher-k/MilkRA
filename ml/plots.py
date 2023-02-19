@@ -158,7 +158,7 @@ def plot_mean_vs_mean(X, y, agg_type=None):
     axins = inset_axes(
         ax,
         width="10%",  # width: 10% of parent_bbox width
-        height="420%",  # height: 50%
+        height="420%",  # TODO: must be some better way than to hardcode height of colorbar
         loc="lower left",
         bbox_to_anchor=(1.05, 0., 1, 1),
         bbox_transform=ax.transAxes,
@@ -225,7 +225,7 @@ def plot_sample_vs_mean(X, y, index, plot_type="one"):
     axins = inset_axes(
         ax,
         width="10%",  # width: 10% of parent_bbox width
-        height="640%",  # height: 50%  TODO: must be some better way than to hardcode height of colorbar
+        height="640%",  # TODO: must be some better way than to hardcode height of colorbar
         loc="lower left",
         bbox_to_anchor=(1.05, 0., 1, 1),
         bbox_transform=ax.transAxes,
@@ -289,7 +289,7 @@ def plot_embedding_visualization(X, y, known_misclassified=None, method="PCA or 
 
 def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=None):
     """
-    Displays convolutional filters of the provided convolutional layers at a provided timestep
+    Displays convolutional filters of the provided convolutional layers at a provided timestep.
 
     :param t: Epoch to produce visualizations at (if final, should be 0)
     :param convs: Iterable of convolutional filters across multiple timesteps
@@ -318,7 +318,7 @@ def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, g
         axins = inset_axes(
             ax,
             width="10%",  # width: 10% of parent_bbox width
-            height="209%",  # height: 50%
+            height="209%",  # TODO: must be some better way than to hardcode height of colorbar
             loc="lower left",
             bbox_to_anchor=(1.05, 0., 1, 1),
             bbox_transform=ax.transAxes,
@@ -436,7 +436,8 @@ def plot_training_validation_heatmap(t, v, t_size, v_size):
     """
     fig, ax = plt.subplots(figsize=(8., 8.), ncols=1)
     t, v = [int(i*t_size) for i in t], [int((1-i)*v_size) for i in v]  # scales %-based accuracy to counts
-    img = np.zeros((v_size, t_size))  # define "blank" image with the dimensionalities of the highest possible counts
+    t_size, v_size = t_size+1, v_size+1  # To account for 100% and 0% accuracy, we plot with an extra count (0)
+    img = np.zeros((v_size, t_size))
     for i_t, i_v in zip(t, v):
         img[i_v][i_t] += 1.0
 
@@ -445,8 +446,8 @@ def plot_training_validation_heatmap(t, v, t_size, v_size):
     ax.figure.colorbar(p, ax=ax, shrink=0.5)
 
     # Set plot parameters
-    ax.set_xticks(np.arange(0, 41, 41/10), labels=[f"{n*10}%" for n in np.arange(0, 10, 1)], size=12)
-    ax.set_yticks(np.arange(0, 20, 20/10), labels=reversed([f"{n*10}%" for n in np.arange(1, 11, 1)]), size=12)
+    ax.set_xticks(np.arange(0, t_size, t_size/10), labels=[f"{n*10}%" for n in np.arange(0, 10, 1)], size=12)
+    ax.set_yticks(np.arange(0, v_size, v_size/10), labels=reversed([f"{n*10}%" for n in np.arange(1, 11, 1)]), size=12)
     plt.title("Training vs Validation Performance Distribution")
     plt.xlabel("Training Accuracy")
     plt.ylabel("Validation Accuracy")
