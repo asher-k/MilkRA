@@ -41,6 +41,12 @@ To properly analyze the variance of our CNN models, we produce heatmaps of the f
 - [DL-hm.raw3.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/DL-hm.raw3.png) : Raw data with kernel size of 3.
 - [DL-hm.raw5.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/DL-hm.raw5.png) : Raw data with kernel size of 5.
 
+### Aggregated CAMs
+We aggregate our Class Activation Maps (CAMs) by class across 25 indepedent seeds to identify consistent patterns in region importance. We produce aggregated CAMs for several statistics.
+- [CAM_mean.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/CAM_mean.png) : Mean-aggregated class CAMs.
+- [CAM_median.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/CAM_median.png) : Median-aggregated class CAMs.
+- [CAM_var.png](https://github.com/asher-k/MilkRA/blob/main/output/figures/general/CAM_var.png) : Variance-aggregated class CAMs. We clip the variance to be within the 75th percentile, as some variances overshadowed regions and corrupted the colour scaling of plots.
+
 ## ``CAM`` plots
 A Class Activation Map (CAM) is a visualization of the impact convolutional filters have on certain regions of an image. These filters are obtained by extracting the final convolved image before the Global Average Pooling (GAP) layer. By extracting input weights from a fully-connected layer that takes the GAP features as input we obtain "weights" for each convolution-class pair. In our plots we display the CAM for the predicted class from a high-performance model composed of 3 convolutional blocks, which achieved 100% training accuracy and 95% validation accuracy.
 - [CAM/](https://github.com/asher-k/MilkRA/blob/main/output/figures/CAMs/)

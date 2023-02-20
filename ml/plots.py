@@ -1,19 +1,18 @@
 import torch
-from functools import partial
-
 import logging
-from PIL.Image import Image, fromarray
 import pandas as pd
 import numpy as np
+import seaborn as sns
 import matplotlib.lines as lines
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.animation as animation
-from mpl_toolkits.axes_grid1 import ImageGrid
-import seaborn as sns
-from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 from data import format_name
+from functools import partial
+from mpl_toolkits.axes_grid1 import ImageGrid
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from PIL.Image import Image, fromarray
 from sklearn.metrics import ConfusionMatrixDisplay
 
 
@@ -41,13 +40,14 @@ def _aggregate_image(X, y, agg_type="mean"):
     return classes, avg
 
 
-def _cam_ups(final_conv, final_dense, top_class, size=None):
+def _cam_ups(final_conv, final_dense, top_class, scale=True, size=None):
     """
     Up samples the CAM to the same dimensionality as the original input image and scales CAM values to the (0,255).
 
     :param final_conv: Input Image convolved by the final layer of convolutional filters
     :param final_dense: Weights of the final dense layer
     :param top_class: Index of the highest-probability class
+    :param scale: Bool used to enable scaling of weights to pixel range
     :param size: Tuple shape to up-sample to; should be same dimensionality as our original image
     """
     if size is None:
@@ -58,9 +58,10 @@ def _cam_ups(final_conv, final_dense, top_class, size=None):
         imd = final_conv.reshape((c, h*w))
         cam = np.matmul(final_dense[idx], imd)  # Matrix multiply the weights of our top class with each filter
         cam = cam.reshape(h, w)
-        cam = cam - np.min(cam)
-        cam = cam / np.max(cam)
-        cam = np.uint8(255 * cam)
+        if scale:  # scales range to 0, 255
+            cam = cam - np.min(cam)
+            cam = cam / np.max(cam)
+            cam = np.uint8(255 * cam)
         cam = np.array(fromarray(cam).resize(size))
         cams.append(cam)
     return cams
@@ -360,7 +361,7 @@ def animate_convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
     logging.info(f"Exported convolutions-by-epoch gif to {out_dir}")
 
 
-def plot_class_activation_maps(model, img, y, out_dir, fname):
+def compute_class_activation_maps(model, img, y, out_dir, fname, display=False):
     """
     Displays and exports class activation maps for the provided image and model.
 
@@ -369,6 +370,8 @@ def plot_class_activation_maps(model, img, y, out_dir, fname):
     :param y: Class for our img
     :param out_dir: Export directory
     :param fname: Name of our CAM file; should include indication of the sample index & seed (if applicable)
+    :param display: Saves the figure to the output directory
+    :return: 2d NumPy CAM, scaled from 0-255
     """
     torch_img = torch.unsqueeze(torch.Tensor(img), 0)  # reshape from numpy to [1, ...] Tensor
     pred = torch.squeeze(torch.exp(model(torch_img)[0]))  # Remove from log space
@@ -384,16 +387,87 @@ def plot_class_activation_maps(model, img, y, out_dir, fname):
     convs = model(torch_img, early_stopping=True)[0].cpu().detach().numpy()
 
     # Obtain & visualize CAM(s)
-    cam = _cam_ups(convs, final_layer, [ind[0]], size=[31, 133])
-    for m in cam:
-        plt.cla()
+    cam = _cam_ups(convs, final_layer, [ind[0]], size=[31, 133], scale=False)
+    if display:
+        for m in cam:  # iterate over all maps in case we decide to display for each potential class
+            plt.cla()
+            fig = plt.figure(figsize=(8., 8.))
+            grid = ImageGrid(fig, 111, nrows_ncols=(1, 2), axes_pad=0.1)
+            for ax, im, c in zip(grid, [np.squeeze(img), m], ['coolwarm', 'plasma']):
+                ims = ax.imshow(im, aspect=1, cmap=c, vmin=-1 if c == 'coolwarm' else None,
+                                vmax=1 if c == 'coolwarm' else None)
+            fig.suptitle(f"Class Activation Map: True {y} Predicted {ind[0]}")
+            plt.savefig(f"{out_dir}/CAM_{fname.zfill(3)}.png")
+    return cam
+
+
+def compute_aggregated_cams(model, data, out_dir, aggr_func, fname, display=False):
+    """
+    Plots class-wise aggregated Class Activation Maps and saves them to the provided output directory.
+
+    :param model: PyTorch model capable of producing CAMs
+    :param data: PyTorch Dataset
+    :param out_dir: Output directory
+    :param aggr_func: Function to use for aggregation; assumed to be np.mean, but can be any NP function which accepts
+    array and axis arguments
+    :param fname: String appended to filename
+    :param display: Saves the figure to the output directory
+    :return: Aggregated class CAMs
+    """
+    cams = {0: [], 1: [], 2: [], 3: []}
+    for i, d in enumerate(data):  # CAMs
+        x, y = d[0], d[1]
+        cam = compute_class_activation_maps(model, x, y, out_dir, str(i))
+        cams[y].append(cam)
+    aggr_cam = [np.squeeze(aggr_func(v, axis=0)) for k, v in cams.items()]  # compute the mean CAMs by class
+
+    # Finally, display them in a 1x4 plot
+    if display:
+        vmin, vmax = np.min(aggr_cam), np.max(aggr_cam)
+
         fig = plt.figure(figsize=(8., 8.))
-        grid = ImageGrid(fig, 111, nrows_ncols=(1, 2), axes_pad=0.1)
-        for ax, im, c in zip(grid, [np.squeeze(img), m], ['coolwarm', 'plasma']):
-            ims = ax.imshow(im, aspect=1, cmap=c,
-                            vmin=-1 if c == 'coolwarm' else None, vmax=1 if c == 'coolwarm' else None)
-        fig.suptitle(f"Class Activation Map: True {y} Predicted {ind[0]}")
-        plt.savefig(f"{out_dir}/CAM_{fname.zfill(3)}.png")
+        grid = ImageGrid(fig, 111, nrows_ncols=(1, 4), axes_pad=0.1)
+        for ax, (i, mean) in zip(grid, enumerate(aggr_cam)):
+            ims = ax.imshow(mean, aspect=1, cmap='coolwarm', vmin=vmin, vmax=vmax)
+            ax.set_title(f"Class: {str(i)}")
+        axins = inset_axes(ax, width="10%", height="100%", loc="lower left", bbox_to_anchor=(1.05, 0., 1, 1),
+                           bbox_transform=ax.transAxes, borderpad=0, )  # Color bar
+        fig.colorbar(ims, cax=axins, ticks=[vmin, vmax])
+        fig.suptitle(f"Class Activation Maps by class {aggr_func.__name__}")
+        out = f"{out_dir}CAM_{fname}_{aggr_func.__name__}.png"
+        plt.savefig(out)
+        logging.info(f"Exported {aggr_func.__name__} CAM images to {out}")
+    return aggr_cam
+
+
+def plot_seed_aggregated_cams(cams, out_dir, aggr_func, fname):
+    """
+    Plots the aggregations of an iterable of CAM aggregations and saves to an output directory.
+
+    :param cams: Dict of aggregated CAMs
+    :param out_dir: Output directory
+    :param aggr_func: Function to use for aggregation; assumed to be np.mean, but can be any NP function which accepts
+    array and axis arguments
+    :param fname: String appended to filename
+    """
+    cams = np.squeeze(cams)
+    final_cams = [aggr_func(cams[:, i], axis=0) for i in range(0, 4)]
+    vmin, vmax = np.min(final_cams), np.max(final_cams)
+    vmax = vmax if vmax-vmin < 10 else np.percentile(final_cams, 75)  # We clip the max if it is sufficiently large
+
+    fig = plt.figure(figsize=(8., 8.))
+    grid = ImageGrid(fig, 111, nrows_ncols=(1, 4), axes_pad=0.25)
+    for ax, (i, mean) in zip(grid, enumerate(final_cams)):
+        ims = ax.imshow(mean, aspect=1, cmap='coolwarm', vmin=vmin, vmax=vmax)
+        ax.set_title(f"Class: {str(i)}")
+    axins = inset_axes(ax, width="10%", height="100%", loc="lower left", bbox_to_anchor=(1.05, 0., 1, 1),
+                       bbox_transform=ax.transAxes, borderpad=0, )  # Color bar
+    ticks = [vmin, vmax, 0] if vmin < 0 < vmax else [vmin, vmax]
+    fig.colorbar(ims, cax=axins, ticks=ticks)
+    fig.suptitle(f"Class Activation Maps by class {aggr_func.__name__}, averaged over {str(len(cams))} seeds")
+    out = f"{out_dir}CAM_{fname}_{aggr_func.__name__}.png"
+    plt.savefig(out)
+    logging.info(f"Exported {aggr_func.__name__} CAM images to {out}")
 
 
 def plot_training_validation_performance(t, v):

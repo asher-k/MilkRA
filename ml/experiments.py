@@ -174,9 +174,10 @@ def classify_dl(args, X, y):
     :param X: Droplet data
     :param y: Droplet classes
     """
-    lr, bs, E, spl = 1e-4, 6, 60, (0.667, 0.333)  # 70-30 train-test split
+    lr, bs, E, spl = 1e-4, 6, 50, (0.667, 0.333)  # 70-30 train-test split
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    performances = {"train_acc": [], "val_acc": []}
+    performances = {"train_acc": [], "val_acc": []}  # Track performance across multiple seeds
+    cams = {"variance": [], "mean": [], "median": []}  # Track aggregated CAMs across multiple seeds
 
     for index, seed in enumerate(nprand.randint(0, 99999, size=args.num_states)):
         seed = int(seed)  # why????
@@ -222,10 +223,13 @@ def classify_dl(args, X, y):
         performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
 
         # Verbosity-enabled plotting
+        cams["mean"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.mean, str(seed)))
+        cams["median"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.median, str(seed)))
+        cams["variance"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.var, str(seed)))
         if args.verbose:
             plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
             for i, d in enumerate(data):  # CAMs
-                plt.plot_class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
+                plt.compute_class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
             # Plot evolution of convolutional filters
             conv1_trend = [v[0] for k, v in conevolution.items()]
             logging.info(np.sum(np.abs(conv1_trend[0] - conv1_trend[-1])))
@@ -233,8 +237,9 @@ def classify_dl(args, X, y):
                                              fname=f"{args.name}:{seed}_convolutions", )
     # Trans-seed plotting
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
-    plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
-    plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
+    plt.plot_seed_aggregated_cams(cams["variance"], args.logs_dir, np.var, str(args.seed))
+    plt.plot_seed_aggregated_cams(cams["mean"], args.logs_dir, np.mean, str(args.seed))
+    plt.plot_seed_aggregated_cams(cams["median"], args.logs_dir, np.median, str(args.seed))
     if args.verbose:
         plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
         plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
