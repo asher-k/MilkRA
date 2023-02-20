@@ -39,7 +39,8 @@ def define_arguments():
     a.add_argument('--importance', default=False, action=BooleanOptionalAction,
                    help='Log feature importances from valid baseline models')
     a.add_argument('--experiment', default='classify:baseline', type=str, choices=["classify:baseline", "classify:dl",
-                                                                                   "classify:ts", "cluster"],
+                                                                                   "classify:ts", "classify:vit",
+                                                                                   "cluster"],
                    help='Experiment to perform; assumes the model chosen is relevant for it')
     a.add_argument('--model', default='logreg', type=str,
                    help='ML baseline to obtain results on; can be \'all\' to sequentially run all baselines.')
@@ -108,7 +109,7 @@ if __name__ == '__main__':
                         ranges=args.load_ranges,
                         features=args.features_at,
                         normalize=args.normalize,
-                        ts=any([True if d in args.experiment else False for d in ["ts", "dl"]])
+                        ts=any([True if d in args.experiment else False for d in ["ts", "dl", "vit"]])
                         )
 
     # delegate to experiment script
@@ -119,6 +120,8 @@ if __name__ == '__main__':
         exp.classify_dl(args, data, labels)
     elif args.experiment == "classify:ts":
         exp.classify_ts(args, data, labels, logs_dir)
+    elif args.experiment == "classify:vit":
+        exp.classify_vit(args, data, labels)
     elif args.experiment == "cluster":
         exp.clustering(args, data, labels)
     else:

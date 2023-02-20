@@ -78,8 +78,8 @@ class CNN(nn.Module):
         self.norm1 = nn.BatchNorm2d(self.conv1.out_channels)
         self.mpool1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        # Conv block 2; output ???
-        self.conv2 = nn.Conv2d(in_channels=self.conv1.out_channels//self.mpool1.kernel_size, out_channels=32,
+        # Conv block 2; output 32
+        self.conv2 = nn.Conv2d(in_channels=16, out_channels=32,
                                kernel_size=(5, 5), stride=(2, 2), padding_mode='circular', padding=3)
         self.relu2 = nn.ReLU()
         self.norm2 = nn.BatchNorm2d(self.conv2.out_channels)
@@ -121,3 +121,13 @@ class CNN(nn.Module):
         x = self.norm4(x)
         predictions = self.softmax(x)
         return predictions, None  # does not return convolutional filters at a timestep
+
+
+def count_params(m):
+    """
+    Computes number of learnable parameters within the provided Module.
+
+    :param m: Model derived from Pytorch Module
+    :return: Int number of learnable parameters
+    """
+    return sum(p.numel() for p in m.parameters() if p.requires_grad)

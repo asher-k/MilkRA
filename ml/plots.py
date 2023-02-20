@@ -258,7 +258,7 @@ def plot_epoch_performance(n_epochs, labels, *metrics):
 
 def plot_embedding_visualization(X, y, known_misclassified=None, method="PCA or UMAP"):
     """
-    Displays 2d data embededdings obtained via Dimensionality Reduction. Points are colored according to class and
+    Displays 2d data embeddings obtained via Dimensionality Reduction. Points are colored according to class and
     are labelled according to index within the dataset.
 
     :param X: Droplet data

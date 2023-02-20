@@ -80,8 +80,13 @@ class FloatTransform(object):
 
 class SubdivTransform(object):
     """
-    Subdivides the provided image into N square windows, discarding any incomplete windows.
+    Subdivides the provided image into N windows, discarding any incomplete windows. If a window size is not provided it
+    is assumed to be square
     """
+    def __init__(self, ss=None, flatten=True):
+        self.subdiv_size = ss
+        self.flatten = flatten
+
     def __call__(self, sample, axis=2):
         """
         Performs the image subdivision.
@@ -90,9 +95,13 @@ class SubdivTransform(object):
         :param axis: Axis to perform the subdivision across
         :return: NumPy array of the subdivided image
         """
-        subdiv_size = sample.shape[axis]
-        n_subdivs = sample.shape[1] // subdiv_size
-        sample = np.array([sample[:, subdiv_size*n:subdiv_size*(n+1), :] for n in range(0, n_subdivs)])
+        if self.subdiv_size is None:
+            self.subdiv_size = sample.shape[axis]  # Divides image into equal-sized square subdivisions
+        n_subdivs = sample.shape[1] // self.subdiv_size
+        sample = np.array([sample[:, self.subdiv_size*n:self.subdiv_size*(n+1), :] for n in range(0, n_subdivs)])
+        sample = np.squeeze(sample)  # drop channels
+        if self.flatten:  # Flatten C, H, W to C, H*W
+            sample = np.reshape(sample, (sample.shape[0], sample.shape[1]*sample.shape[2]))
         return sample
 
 

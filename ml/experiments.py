@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam
 from torch import nn
 import nn as nets
+import transformer as trans
 from models import Baselines, Clustering, TSBaselines
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
@@ -108,80 +109,6 @@ def classify_baselines(args, X, y, logs_dir):
                     dt_splits.to_csv(imp_name)  # need to update save dir...
 
 
-def classify_dl(args, X, y):
-    """
-    Classification experiment with DL models.
-
-    :param args: Command-line ArgParser
-    :param X: Droplet data
-    :param y: Droplet classes
-    """
-    lr, bs, E, spl = 1e-4, 6, 50, (0.667, 0.333)  # 70-30 train-test split
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    performances = {"train_acc": [], "val_acc": []}
-
-    for index, seed in enumerate(nprand.randint(0, 99999, size=args.num_states)):
-        seed = int(seed)  # why????
-        nprand.seed(seed)
-        torch.manual_seed(seed)
-        logging.critical(f"Set Seed {index+1}, {seed}")
-
-        # Prepare data and initialize training & test DataLoaders
-        X_data = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
-        y_data = np.array(y)
-        data = DropletDataset(X_data, y_data, transforms=[
-            ToTensor(), FloatTransform(), #SubdivTransform(),
-        ])
-        tr_size, val_size = int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])
-        (trainData, testData) = random_split(data, [tr_size, val_size], generator=torch.Generator().manual_seed(seed))
-        trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
-        testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
-        trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
-
-        # init model, optimizer, logs
-        ks = 3 if args.type == "processed" else 5
-        model = nets.CMapNN(num_classes=4, kernel_size=ks).to(device)
-        optimizer = Adam(model.parameters(), lr=lr)
-        loss_fn = nn.NLLLoss()
-        performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
-        conevolution = {}  # convoluton + evolution
-
-        # begin training & track convolutional filters at each epoch
-        for e in range(0, E):
-            logging.info(f"Epoch: {e}")
-            performance_log = _train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
-            performance_log = _validate(model, testLoader, device, loss_fn, performance_log)
-            if args.verbose:
-                conevolution[e] = [np.copy(model.conv3.weight.detach().numpy())]
-
-        # compute actual performances by aggregating across batches/steps, then save for trans-seed tracking
-        for k1, k2 in zip(["train_loss", "val_loss"], ["train_acc", "val_acc"]):
-            performance_log[k1] = [a/trainSteps if "train" in k1 else a/valSteps for a in performance_log[k1]]
-            performance_log[k2] = [a/tr_size if "train" in k2 else a/val_size for a in performance_log[k2]]
-            logging.info(f"Final {k1}\t{round(performance_log[k1][-1], 3)}")
-            logging.info(f"Final {k2}\t\t{round(performance_log[k2][-1], 3)}")
-        performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
-        performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
-
-        # Verbosity-enabled plotting
-        if args.verbose:
-            plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
-            for i, d in enumerate(data):  # CAMs
-                plt.plot_class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
-            # Plot evolution of convolutional filters
-            conv1_trend = [v[0] for k, v in conevolution.items()]
-            logging.info(np.sum(np.abs(conv1_trend[0] - conv1_trend[-1])))
-            plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=args.logs_dir, title=f"seed{seed}",
-                                             fname=f"{args.name}:{seed}_convolutions", )
-    # Trans-seed plotting
-    logging.info(f"Final results on {args.num_states} seeds: {performances}")
-    plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
-    plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
-    if args.verbose:
-        plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
-        plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
-
-
 def classify_ts(args, X, y, logs_dir):
     """
     Classification experiment with Time-series models.
@@ -239,7 +166,109 @@ def clustering(args, X, y):
     clusters.plot_dendrogram(model)
 
 
-def _train_epoch(model, loader, device, loss_fn, opt, log, verbose=False):
+def classify_dl(args, X, y):
+    """
+    Classification experiment with DL models.
+
+    :param args: Command-line ArgParser
+    :param X: Droplet data
+    :param y: Droplet classes
+    """
+    lr, bs, E, spl = 1e-4, 6, 60, (0.667, 0.333)  # 70-30 train-test split
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    performances = {"train_acc": [], "val_acc": []}
+
+    for index, seed in enumerate(nprand.randint(0, 99999, size=args.num_states)):
+        seed = int(seed)  # why????
+        nprand.seed(seed)
+        torch.manual_seed(seed)
+        logging.critical(f"Set Seed {index+1}, {seed}")
+
+        # Prepare data and initialize training & test DataLoaders
+        X_data = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
+        y_data = np.array(y)
+        data = DropletDataset(X_data, y_data, transforms=[
+            ToTensor(), FloatTransform(),
+        ])
+        tr_size, val_size = int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])
+        (trainData, testData) = random_split(data, [tr_size, val_size], generator=torch.Generator().manual_seed(seed))
+        trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
+        testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
+        trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
+
+        # init model, optimizer, logs
+        ks = 3 if args.type == "processed" else 5
+        model = nets.CMapNN(num_classes=4, kernel_size=ks).to(device)
+        optimizer = Adam(model.parameters(), lr=lr)
+        loss_fn = nn.NLLLoss()
+        performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+        conevolution = {}  # convolution + evolution
+
+        # begin training & track convolutional filters at each epoch
+        for e in range(0, E):
+            logging.info(f"Epoch: {e}")
+            performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
+            performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
+            if args.verbose:
+                conevolution[e] = [np.copy(model.conv3.weight.detach().numpy())]
+
+        # compute actual performances by aggregating across batches/steps, then save for trans-seed tracking
+        for k1, k2 in zip(["train_loss", "val_loss"], ["train_acc", "val_acc"]):
+            performance_log[k1] = [a/trainSteps if "train" in k1 else a/valSteps for a in performance_log[k1]]
+            performance_log[k2] = [a/tr_size if "train" in k2 else a/val_size for a in performance_log[k2]]
+            logging.info(f"Final {k1}\t{round(performance_log[k1][-1], 3)}")
+            logging.info(f"Final {k2}\t\t{round(performance_log[k2][-1], 3)}")
+        performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
+        performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
+
+        # Verbosity-enabled plotting
+        if args.verbose:
+            plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
+            for i, d in enumerate(data):  # CAMs
+                plt.plot_class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
+            # Plot evolution of convolutional filters
+            conv1_trend = [v[0] for k, v in conevolution.items()]
+            logging.info(np.sum(np.abs(conv1_trend[0] - conv1_trend[-1])))
+            plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=args.logs_dir, title=f"seed{seed}",
+                                             fname=f"{args.name}:{seed}_convolutions", )
+    # Trans-seed plotting
+    logging.info(f"Final results on {args.num_states} seeds: {performances}")
+    plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
+    plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
+    if args.verbose:
+        plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
+        plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
+
+
+def classify_vit(args, X, y):
+    """
+    Vision Transformer classification.
+
+    :param args: Command-line ArgParser
+    :param X: Droplet data
+    :param y: Droplet classes
+    """
+    lr, bs, E, spl, subdiv_size = 1e-4, 6, 50, (0.667, 0.333), 5
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.manual_seed(args.seed)
+
+    # Prepare data and initialize DataLoaders
+    X_data = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
+    y_data = np.array(y)
+    data = DropletDataset(X_data, y_data, transforms=[
+        FloatTransform(),  SubdivTransform(subdiv_size, flatten=subdiv_size not in [1, ]), ToTensor(),
+    ])
+    tr_size, val_size = int(data.__len__() * spl[0]) + 1, int(data.__len__() * spl[1])
+    (trainData, testData) = random_split(data, [tr_size, val_size], generator=torch.Generator().manual_seed(args.seed))
+    trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
+    testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
+    trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
+
+    # Configure model and optimizer
+    model = trans.ViT(n_dims=8, n_heads=4).to(device)
+
+
+def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False):
     """
     Performs one training epoch for the provided NN model.
 
@@ -278,7 +307,7 @@ def _train_epoch(model, loader, device, loss_fn, opt, log, verbose=False):
     return log
 
 
-def _validate(model, loader, device, loss_fn, log):
+def _dl_validate(model, loader, device, loss_fn, log):
     """
     Verifies model performance on the validation set
 
