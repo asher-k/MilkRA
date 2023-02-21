@@ -205,7 +205,7 @@ def classify_dl(args, X, y):
         performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
         conevolution = {}  # convolution + evolution
 
-        # begin training & track convolutional filters at each epoch
+        # Training & validation; if verbose track convolutional filters at each epoch
         for e in range(0, E):
             logging.info(f"Epoch: {e}")
             performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
@@ -223,13 +223,13 @@ def classify_dl(args, X, y):
         performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
 
         # Verbosity-enabled plotting
-        cams["mean"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.mean, str(seed)))
-        cams["median"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.median, str(seed)))
-        cams["variance"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.var, str(seed)))
         if args.verbose:
             plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
             for i, d in enumerate(data):  # CAMs
                 plt.compute_class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
+                cams["mean"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.mean, str(seed)))
+                cams["median"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.median, str(seed)))
+                cams["variance"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.var, str(seed)))
             # Plot evolution of convolutional filters
             conv1_trend = [v[0] for k, v in conevolution.items()]
             logging.info(np.sum(np.abs(conv1_trend[0] - conv1_trend[-1])))
@@ -237,9 +237,6 @@ def classify_dl(args, X, y):
                                              fname=f"{args.name}:{seed}_convolutions", )
     # Trans-seed plotting
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
-    plt.plot_seed_aggregated_cams(cams["variance"], args.logs_dir, np.var, str(args.seed))
-    plt.plot_seed_aggregated_cams(cams["mean"], args.logs_dir, np.mean, str(args.seed))
-    plt.plot_seed_aggregated_cams(cams["median"], args.logs_dir, np.median, str(args.seed))
     if args.verbose:
         plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
         plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
@@ -253,7 +250,7 @@ def classify_vit(args, X, y):
     :param X: Droplet data
     :param y: Droplet classes
     """
-    lr, bs, E, spl, subdiv_size = 1e-4, 6, 50, (0.667, 0.333), 5
+    lr, bs, E, spl, subdiv_size = 1e-3, 6, 500, (0.667, 0.333), 8
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(args.seed)
 
@@ -269,8 +266,18 @@ def classify_vit(args, X, y):
     testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
     trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
-    # Configure model and optimizer
-    model = trans.ViT(n_dims=8, n_heads=4).to(device)
+    # Configure model, optimizer, loss and logs
+    n_subdivs, subdiv_dims = len(data[0][0]), len(data[0][0][0])
+    model = trans.ViT(sd=(n_subdivs, subdiv_dims), n_dims=8, n_heads=4, n_blocks=1, n_classes=4).to(device)
+    optimizer = Adam(model.parameters(), lr=lr)
+    loss_fn = nn.NLLLoss()
+    performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+
+    # Training & validation
+    for e in range(0, E):
+        logging.info(f"Epoch: {e}")
+        performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
+        performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
 
 
 def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False):

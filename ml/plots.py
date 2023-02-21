@@ -165,7 +165,7 @@ def plot_mean_vs_mean(X, y, agg_type=None):
         bbox_transform=ax.transAxes,
         borderpad=0,
     )
-    fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
+    fig.colorbar(ims, cax=axins, ticks=[-1 if agg_type == "mean" else -0.1, 0, 1 if agg_type == "mean" else 0.1])
     plt.show()
 
 
@@ -232,7 +232,7 @@ def plot_sample_vs_mean(X, y, index, plot_type="one"):
         bbox_transform=ax.transAxes,
         borderpad=0,
     )
-    fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
+    fig.colorbar(ims, cax=axins, ticks=[-1, 0, 1])
     plt.show()
 
 
@@ -325,7 +325,7 @@ def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, g
             bbox_transform=ax.transAxes,
             borderpad=0,
         )
-        fig.colorbar(ims, cax=axins, ticks=[1, 2, 3])
+        fig.colorbar(ims, cax=axins, ticks=[-1, 0, 1])
         plt.show()
 
 
