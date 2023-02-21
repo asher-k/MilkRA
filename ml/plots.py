@@ -67,6 +67,20 @@ def _cam_ups(final_conv, final_dense, top_class, scale=True, size=None):
     return cams
 
 
+def plot_attention_by_class(model, data, out_dir):
+    """
+    Displays a line plot of the aggregated attention values assigned to each subdivision over each class.
+
+    :param model: ViT model
+    :param data: Dataset of droplet samples
+    :param out_dir: Output directory
+    """
+    attentions_by_class = None
+    for sample in data:
+        pass
+    return None
+
+
 def plot_samplewise_misclassification_rates(baselines, n_display, labels, arguments, out_dir, mname):
     """
     Displays a horizontal bar chart displaying misclassification rates and classes of samples.
@@ -147,10 +161,11 @@ def plot_mean_vs_mean(X, y, agg_type=None):
                 finals.append(v1-v2)
 
     fig = plt.figure(figsize=(8., 8.))
-    grid = ImageGrid(fig, 111, nrows_ncols=(4, 4), axes_pad=0.1)
+    n_rows, n_cols = len(set(y))
+    grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.1)
     for i, ax, im in zip(enumerate(finals), grid, finals):
-        ax.set_xlabel(list(avg.keys())[i[0] % 4][:4])
-        ax.set_ylabel(list(avg.keys())[i[0]//4][:4])
+        ax.set_xlabel(list(avg.keys())[i[0] % n_rows][:n_rows])
+        ax.set_ylabel(list(avg.keys())[i[0]//n_cols][:n_cols])
         ims = ax.imshow(im, aspect=.12, vmin=-1 if agg_type == "mean" else -0.1, vmax=1 if agg_type == "mean" else 0.1,
                         cmap='coolwarm')
     fig.suptitle(f"\'Pixel-wise\' divergences between mean class samples: {agg_type}")
@@ -159,7 +174,7 @@ def plot_mean_vs_mean(X, y, agg_type=None):
     axins = inset_axes(
         ax,
         width="10%",  # width: 10% of parent_bbox width
-        height="420%",  # TODO: must be some better way than to hardcode height of colorbar
+        height=f"{str(105*n_cols)}%",
         loc="lower left",
         bbox_to_anchor=(1.05, 0., 1, 1),
         bbox_transform=ax.transAxes,
@@ -226,7 +241,7 @@ def plot_sample_vs_mean(X, y, index, plot_type="one"):
     axins = inset_axes(
         ax,
         width="10%",  # width: 10% of parent_bbox width
-        height="640%",  # TODO: must be some better way than to hardcode height of colorbar
+        height=f"{str(105*len(index))}%",
         loc="lower left",
         bbox_to_anchor=(1.05, 0., 1, 1),
         bbox_transform=ax.transAxes,
@@ -305,10 +320,10 @@ def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, g
     weight, to_append = convs[t], epochs[t]
     weight = np.reshape(weight, (weight.shape[0], weight.shape[2], weight.shape[3], weight.shape[1]))
 
+    n_rows = int(np.ceil(np.sqrt(weight.shape[0])))
+    n_cols = int(np.ceil(weight.shape[0] / n_rows))
     if fig is None or grid is None:
         fig = plt.figure(figsize=(8., 8.))
-        n_rows = int(np.ceil(np.sqrt(weight.shape[0])))
-        n_cols = int(np.ceil(weight.shape[0]/n_rows))
         logging.info(f"Figure shape {n_rows}r {n_cols}c")
         grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.1)
     for i, ax, im in zip(enumerate(weight), grid, weight):
@@ -319,7 +334,7 @@ def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, g
         axins = inset_axes(
             ax,
             width="10%",  # width: 10% of parent_bbox width
-            height="209%",  # TODO: must be some better way than to hardcode height of colorbar
+            height=f"{str(105*len(n_rows))}%",
             loc="lower left",
             bbox_to_anchor=(1.05, 0., 1, 1),
             bbox_transform=ax.transAxes,
@@ -453,7 +468,8 @@ def plot_seed_aggregated_cams(cams, out_dir, aggr_func, fname):
     cams = np.squeeze(cams)
     final_cams = [aggr_func(cams[:, i], axis=0) for i in range(0, 4)]
     vmin, vmax = np.min(final_cams), np.max(final_cams)
-    vmax = vmax if vmax-vmin < 10 else np.percentile(final_cams, 75)  # We clip the max if it is sufficiently large
+    perc = 75  # Percentile to clip at; TODO: 75th may clip too much, consider moving up
+    vmax = vmax if vmax-vmin < 10 else np.percentile(final_cams, perc)  # We clip the max if it is sufficiently large
 
     fig = plt.figure(figsize=(8., 8.))
     grid = ImageGrid(fig, 111, nrows_ncols=(1, 4), axes_pad=0.25)

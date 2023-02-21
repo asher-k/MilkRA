@@ -18,36 +18,41 @@ def define_arguments():
     :return: Default command-line arguments
     """
     a = ArgumentParser()
-    a.add_argument('--seed', default=1, type=int,
-                   help='Initial super seed of random for generating random seeds')
-    a.add_argument('--num_states', default=1, type=int,
-                   help='Number of random states to compute model performances at')
-    a.add_argument('--dir', default='../data/processed', type=str,
-                   help='Path to data folders')
-    a.add_argument('--type', default='processed', type=str, choices=['processed', 'raw'],
-                   help='Observations contain a raw and processed csv file')
-    a.add_argument('--logs_dir', default='../logs/', type=str,
-                   help='Logging directory')
+    # Experiment & Logging Arguments
     a.add_argument('--name', default='run', type=str,
                    help='Experiment name appended to files')
-    a.add_argument('--save', default=False, action=BooleanOptionalAction,
-                   help='Save performance statistics to a CSV in the logging directory')
-    a.add_argument('--only_acc', default=False, action=BooleanOptionalAction,
-                   help='Only save direct model outputs')
+    a.add_argument('--seed', default=1, type=int,
+                   help='Initial super seed of random for generating random seeds')
     a.add_argument('--verbose', default=False, action=BooleanOptionalAction,
                    help='Prints performance statistics to console & log and enables export of experiment figures')
+    a.add_argument('--dir', default='../data/processed', type=str,
+                   help='Path to data folders')
+    a.add_argument('--logs_dir', default='../logs/', type=str,
+                   help='Path to logs directory')
+    a.add_argument('--save', default=False, action=BooleanOptionalAction,
+                   help='Save performance statistics to a CSV in the logging directory; also saves PyTorch models')
+    a.add_argument('--only_acc', default=False, action=BooleanOptionalAction,
+                   help='Only save direct model outputs')
     a.add_argument('--importance', default=False, action=BooleanOptionalAction,
                    help='Log feature importances from valid baseline models')
+
+    # Model arguments
     a.add_argument('--experiment', default='classify:baseline', type=str, choices=["classify:baseline", "classify:dl",
                                                                                    "classify:ts", "classify:vit",
                                                                                    "cluster"],
                    help='Experiment to perform; assumes the model chosen is relevant for it')
     a.add_argument('--model', default='logreg', type=str,
                    help='ML baseline to obtain results on; can be \'all\' to sequentially run all baselines.')
+    a.add_argument('--num_states', default=1, type=int,
+                   help='Number of random states to compute model performances at')
+
+    # Data/preprocessing arguments
+    a.add_argument('--type', default='processed', type=str, choices=['processed', 'raw'],
+                   help='Samples contain a raw and processed csv file; this designates which one is used by our models')
     a.add_argument('--load_only', default=None, type=int,
                    help='Only load droplet at the given time step')
     a.add_argument('--load_at', nargs="+", type=int,
-                   help='Appends droplet data at multiple time steps for dimensionality reduction')
+                   help='Concatenates flattened droplet data at the specified time steps')
     a.add_argument('--load_ranges', nargs="+", type=str,
                    help='String-formatted ranges representing indicies of steps to use in ML baselines')
     a.add_argument('--features_at', nargs="+", type=int,
@@ -55,7 +60,7 @@ def define_arguments():
     a.add_argument('--features_selection', default="none", choices=["none", "pca", "top"], type=str,
                    help='Perform PCA on the raw/processed datasets')
     a.add_argument('--centre_avg', default=False, action=BooleanOptionalAction,
-                   help='Average centre 3 observations')
+                   help='Average centre 3 observations; this could provide a boost in performance through dim. red.')
     a.add_argument('--normalize', default="max", choices=["max", "const", "none"], type=str,
                    help='Type of normalization to apply to droplet heights. Max normalizes according to the highest '
                         'observed droplet height, const according to a constant parameter')
@@ -79,6 +84,8 @@ def preconditions(a):
             "Received arguments for features_at and features_selection; selected features will rely on the subset")
     if not a.save and not a.verbose:
         logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
+    if a.save and any([t in a.experiment for t in ['dl', 'vit']] and a.num_states > 1):
+        logging.warning("Saving is enabled for multiple PyTorch models! All models will save at the cost of disk space")
 
 
 # Delegate mode to correct model, using the provided arguments.
@@ -94,10 +101,11 @@ if __name__ == '__main__':
     logging.basicConfig(filename=logs_name,
                         format="%(asctime)s: %(message)s",
                         filemode="w")
-    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger().setLevel(logging.CRITICAL)
     logging.getLogger('matplotlib.font_manager').disabled = True
     if args.verbose:
-        logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))  # also print to console
+        logging.getLogger().setLevel(logging.INFO)
+        # logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     logging.info("Starting Preprocessing...")
 
     # load & reformat datasets
@@ -117,11 +125,11 @@ if __name__ == '__main__':
     if args.experiment == "classify:baseline":
         exp.classify_baselines(args, data, labels, logs_dir)
     elif args.experiment == "classify:dl":
-        exp.classify_dl(args, data, labels)
+        exp.classify_dl(args, data, labels, logs_dir)
     elif args.experiment == "classify:ts":
         exp.classify_ts(args, data, labels, logs_dir)
     elif args.experiment == "classify:vit":
-        exp.classify_vit(args, data, labels)
+        exp.classify_vit(args, data, labels, logs_dir)
     elif args.experiment == "cluster":
         exp.clustering(args, data, labels)
     else:

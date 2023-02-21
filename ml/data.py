@@ -47,6 +47,15 @@ class DropletDataset(Dataset):
         label = _label_to_index(label)
         return sample, label
 
+    def labels(self):
+        """
+        Dynamic computation of set and number of distinct labels in the dataset.
+
+        :return: Tupe(List, Int) unique labels, number of labels
+        """
+        labels = set(self.droplets_label)
+        return labels, len(labels)
+
 
 class ToTensor(object):
     """

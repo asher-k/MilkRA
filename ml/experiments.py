@@ -7,8 +7,9 @@ import numpy.random as nprand
 import plots as plt
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
-from torch.optim import Adam
+from torch.optim import Adam, lr_scheduler
 from torch import nn
+from tqdm import tqdm
 import nn as nets
 import transformer as trans
 from models import Baselines, Clustering, TSBaselines
@@ -166,59 +167,63 @@ def clustering(args, X, y):
     clusters.plot_dendrogram(model)
 
 
-def classify_dl(args, X, y):
+def classify_dl(args, X, y, logs_dir):
     """
     Classification experiment with DL models.
 
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
+    :param logs_dir: Sub-directory to save any produced files in
     """
     lr, bs, E, spl = 1e-4, 6, 50, (0.667, 0.333)  # 70-30 train-test split
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     performances = {"train_acc": [], "val_acc": []}  # Track performance across multiple seeds
     cams = {"variance": [], "mean": [], "median": []}  # Track aggregated CAMs across multiple seeds
 
+    # Reformat data & define DataSet
+    X_data = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
+    y_data = np.array(y)
+    data = DropletDataset(X_data, y_data, transforms=[
+        ToTensor(), FloatTransform(),
+    ])
+    tr_size, val_size = int(data.__len__() * spl[0]) + 1, int(data.__len__() * spl[1])
+
     for index, seed in enumerate(nprand.randint(0, 99999, size=args.num_states)):
+        # Sub-seed setup
         seed = int(seed)  # why????
         nprand.seed(seed)
         torch.manual_seed(seed)
         logging.critical(f"Set Seed {index+1}, {seed}")
 
-        # Prepare data and initialize training & test DataLoaders
-        X_data = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
-        y_data = np.array(y)
-        data = DropletDataset(X_data, y_data, transforms=[
-            ToTensor(), FloatTransform(),
-        ])
-        tr_size, val_size = int(data.__len__()*spl[0])+1, int(data.__len__()*spl[1])
+        # Initialize training & test DataLoaders
         (trainData, testData) = random_split(data, [tr_size, val_size], generator=torch.Generator().manual_seed(seed))
         trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
         testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
         trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
-        # init model, optimizer, logs
+        # Initialize model, optimizer, logs
         ks = 3 if args.type == "processed" else 5
-        model = nets.CMapNN(num_classes=4, kernel_size=ks).to(device)
+        model = nets.CMapNN(num_classes=data.labels()[1], kernel_size=ks).to(device)
+        logging.info(f"Model Size: {nets.count_params(model)}")
+
         optimizer = Adam(model.parameters(), lr=lr)
         loss_fn = nn.NLLLoss()
         performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
-        conevolution = {}  # convolution + evolution
+        conevolution = {}  # convolution + evolution lol
 
         # Training & validation; if verbose track convolutional filters at each epoch
-        for e in range(0, E):
+        for e in (bar := tqdm(range(0, E))):
             logging.info(f"Epoch: {e}")
             performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
             performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
+            t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
+            bar.set_description(f"t{t} v{v}")  # Update bar description
             if args.verbose:
                 conevolution[e] = [np.copy(model.conv3.weight.detach().numpy())]
 
         # compute actual performances by aggregating across batches/steps, then save for trans-seed tracking
-        for k1, k2 in zip(["train_loss", "val_loss"], ["train_acc", "val_acc"]):
-            performance_log[k1] = [a/trainSteps if "train" in k1 else a/valSteps for a in performance_log[k1]]
-            performance_log[k2] = [a/tr_size if "train" in k2 else a/val_size for a in performance_log[k2]]
-            logging.info(f"Final {k1}\t{round(performance_log[k1][-1], 3)}")
-            logging.info(f"Final {k2}\t\t{round(performance_log[k2][-1], 3)}")
+        performance_log = _normalize_performance_logs(performance_log, trainSteps, tr_size, valSteps, val_size)
         performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
         performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
 
@@ -226,14 +231,13 @@ def classify_dl(args, X, y):
         if args.verbose:
             plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
             for i, d in enumerate(data):  # CAMs
-                plt.compute_class_activation_maps(model, d[0], d[1], args.logs_dir, str(i))
-                cams["mean"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.mean, str(seed)))
-                cams["median"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.median, str(seed)))
-                cams["variance"].append(plt.compute_aggregated_cams(model, data, args.logs_dir, np.var, str(seed)))
+                plt.compute_class_activation_maps(model, d[0], d[1], logs_dir, str(i))
+                cams["mean"].append(plt.compute_aggregated_cams(model, data, logs_dir, np.mean, str(seed)))
+                cams["median"].append(plt.compute_aggregated_cams(model, data, logs_dir, np.median, str(seed)))
+                cams["variance"].append(plt.compute_aggregated_cams(model, data, logs_dir, np.var, str(seed)))
             # Plot evolution of convolutional filters
             conv1_trend = [v[0] for k, v in conevolution.items()]
-            logging.info(np.sum(np.abs(conv1_trend[0] - conv1_trend[-1])))
-            plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=args.logs_dir, title=f"seed{seed}",
+            plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=logs_dir, title=f"seed{seed}",
                                              fname=f"{args.name}:{seed}_convolutions", )
     # Trans-seed plotting
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
@@ -242,45 +246,72 @@ def classify_dl(args, X, y):
         plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
 
 
-def classify_vit(args, X, y):
+def classify_vit(args, X, y, logs_dir):
     """
-    Vision Transformer classification.
+    Vision Transformer classification experiment.
 
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
+    :param logs_dir: Sub-directory to save any produced files in
     """
-    lr, bs, E, spl, subdiv_size = 1e-3, 6, 500, (0.667, 0.333), 8
+    lr, bs, E, spl, subdiv_size = 1e-3, 6, 250, (0.667, 0.333), 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.manual_seed(args.seed)
+    performances = {"train_acc": [], "val_acc": []}  # Track performance across multiple seeds
 
-    # Prepare data and initialize DataLoaders
+    # Reformat data
     X_data = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
     y_data = np.array(y)
     data = DropletDataset(X_data, y_data, transforms=[
-        FloatTransform(),  SubdivTransform(subdiv_size, flatten=subdiv_size not in [1, ]), ToTensor(),
+        FloatTransform(), SubdivTransform(subdiv_size, flatten=subdiv_size not in [1, ]), ToTensor(),
     ])
     tr_size, val_size = int(data.__len__() * spl[0]) + 1, int(data.__len__() * spl[1])
-    (trainData, testData) = random_split(data, [tr_size, val_size], generator=torch.Generator().manual_seed(args.seed))
-    trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
-    testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
-    trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
-    # Configure model, optimizer, loss and logs
-    n_subdivs, subdiv_dims = len(data[0][0]), len(data[0][0][0])
-    model = trans.ViT(sd=(n_subdivs, subdiv_dims), n_dims=8, n_heads=4, n_blocks=1, n_classes=4).to(device)
-    optimizer = Adam(model.parameters(), lr=lr)
-    loss_fn = nn.NLLLoss()
-    performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+    for index, seed in enumerate(nprand.randint(0, 99999, size=args.num_states)):
+        # Sub-seed setup
+        seed = int(seed)
+        nprand.seed(seed)
+        torch.manual_seed(seed)
+        logging.critical(f"Set Seed {index+1}, {seed}")
 
-    # Training & validation
-    for e in range(0, E):
-        logging.info(f"Epoch: {e}")
-        performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
-        performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
+        # Initialize training & test DataLoaders
+        (trainData, testData) = random_split(data, [tr_size, val_size], generator=torch.Generator().manual_seed(seed))
+        trainLoader = DataLoader(trainData, batch_size=bs, shuffle=True)
+        testLoader = DataLoader(testData, batch_size=bs, shuffle=True)
+        trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
+
+        # Configure model, optimizer, loss and logs
+        n_subdivs, subdiv_dims = len(data[0][0]), len(data[0][0][0])
+        sd, n_dims, n_heads, n_blocks, n_classes = (n_subdivs, subdiv_dims), 16, 8, 2, data.labels()[1]
+        model = trans.ViT(sd=sd, n_dims=n_dims, n_heads=n_heads, n_blocks=n_blocks, n_classes=n_classes).to(device)
+        logging.critical(f"Model Size: {nets.count_params(model)}")
+
+        optimizer = Adam(model.parameters(), lr=lr)
+        sr = lr_scheduler.StepLR(optimizer, step_size=E//10, gamma=0.95)
+        loss_fn = nn.NLLLoss()
+        performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
+
+        # Training & validation
+        for e in (bar := tqdm(range(0, E))):
+            logging.info(f"Epoch: {e}")
+            performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log, lrs=sr)
+            performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
+            t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
+            bar.set_description(f"t{t} v{v}")  # Update bar description
+
+        performance_log = _normalize_performance_logs(performance_log, trainSteps, tr_size, valSteps, val_size)
+        performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
+        performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
+
+        # Verbosity-enabled plotting
+        if args.verbose:
+            plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
+            plt.plot_attention_by_class(model, data, logs_dir)
+
+    logging.info(f"Final results on {args.num_states} seeds: {performances}")
 
 
-def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False):
+def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs=None):
     """
     Performs one training epoch for the provided NN model.
 
@@ -310,6 +341,9 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False):
         # loss & accuracy logging
         train_loss += loss
         train_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
+    if lrs is not None:
+        lrs.step()
+        logging.info(f"LR, {lrs.get_lr()}")
 
     if verbose:  # not recommended; purely debugging
         plt.plot_conv_visualizations(model.conv1, )
@@ -343,3 +377,22 @@ def _dl_validate(model, loader, device, loss_fn, log):
     log["val_acc"].append(val_acc)
     logging.info(f"val_loss {val_loss.item()}, val_acc {val_acc}")
     return log
+
+
+def _normalize_performance_logs(logs, t_steps, t_size, v_steps, v_size):
+    """
+    Normalizes performance logs for DL methods
+
+    :param logs: Dict performance logs
+    :param t_steps: Training steps
+    :param t_size: Training set size
+    :param v_steps: Validation steps
+    :param v_size: Validation set size
+    :return: Updated logs
+    """
+    for k1, k2 in zip(["train_loss", "val_loss"], ["train_acc", "val_acc"]):
+        logs[k1] = [a / t_steps if "train" in k1 else a / v_steps for a in logs[k1]]
+        logs[k2] = [a / t_size if "train" in k2 else a / v_size for a in logs[k2]]
+        logging.info(f"Final {k1}\t{round(logs[k1][-1], 3)}")
+        logging.info(f"Final {k2}\t\t{round(logs[k2][-1], 3)}")
+    return logs
