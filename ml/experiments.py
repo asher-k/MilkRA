@@ -259,7 +259,7 @@ def classify_vit(args, X, y, logs_dir):
     :param y: Droplet classes
     :param logs_dir: Sub-directory to save any produced files in
     """
-    lr, bs, E, spl, subdiv_size = 1e-3, 6, 400, (0.667, 0.333), 32
+    lr, bs, E, spl, subdiv_size = 1e-3, 6, 500, (0.667, 0.333), 8
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     performances = {"train_acc": [], "val_acc": []}  # Track performance across multiple seeds
 
@@ -350,6 +350,7 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
         # loss & accuracy logging
         train_loss += loss
         train_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
+        print(model.linear_embedding.weight.grad)
     if lrs is not None:
         lrs.step()
         logging.info(f"LR, {lrs.get_lr()}")

@@ -8,7 +8,7 @@ class ViT(nn.Module):
     """
     Vision Transformer. Use SubdivTransform when loading from Dataset to ensure samples are divided into sub-regions.
     """
-    def __init__(self, sd, n_dims, n_heads, n_blocks, n_classes):
+    def __init__(self, sd, n_dims, n_heads, n_blocks, n_classes, dropout=0.1):
         super(ViT, self).__init__()
 
         # Non-layer attributes
@@ -17,6 +17,7 @@ class ViT(nn.Module):
         self.n_heads = n_heads  # No. of Attention Heads
         self.n_blocks = n_blocks  # No. of Attention blocks
         self.n_classes = n_classes
+        self.dropout = dropout
 
         # Embeddings & Tokens
         self.linear_embedding = nn.Linear(self.sd[1], self.n_dims)
@@ -43,6 +44,7 @@ class ViT(nn.Module):
         position_x = self.positional_embedding(x)
         x = self.linear_embedding(x)
         x = x + position_x
+        x = nn.Dropout(p=self.dropout)(x)
         x = torch.stack([torch.vstack((self.v_class, x[i])) for i in range(len(x))])  # stack classification tokens w/ x
 
         # Encoder
@@ -61,13 +63,14 @@ class AttentionBlock(nn.Module):
     """
     Attention Block; composed of layer normalizations, MHSA, residual connections and an MLP.
     """
-    def __init__(self, n_dims, n_heads, dense_size=4):
+    def __init__(self, n_dims, n_heads, dense_size=4, dropout=0.1):
         super(AttentionBlock, self).__init__()
 
         # Non-layer attributes
         self.n_dims = n_dims
         self.n_heads = n_heads
         self.dense_size = dense_size
+        self.dropout = dropout
 
         # Layers
         self.lnorm1 = nn.LayerNorm(self.n_dims)
@@ -87,10 +90,13 @@ class AttentionBlock(nn.Module):
         """
         inner_x = self.lnorm1(x)
         inner_x, _attns = self.mhsa(inner_x)
+        inner_x = nn.Dropout(p=self.dropout)(inner_x)
         x_bp = inner_x + x  # Propagate original embeddings through residual connection, store as a breakpoint for later
 
         inner_x = self.lin1(self.lnorm2(x_bp))  # MLP
+        inner_x = nn.Dropout(p=self.dropout)(inner_x)
         inner_x = self.lin2(self.gelu(inner_x))
+        inner_x = nn.Dropout(p=self.dropout)(inner_x)
         x = inner_x + x_bp  # Second residual connection
         return x, _attns
 
