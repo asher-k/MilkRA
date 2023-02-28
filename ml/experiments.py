@@ -239,6 +239,10 @@ def classify_dl(args, X, y, logs_dir):
             conv1_trend = [v[0] for k, v in conevolution.items()]
             plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=logs_dir, title=f"seed{seed}",
                                              fname=f"{args.name}:{seed}_convolutions", )
+        # Save model (expensive!)
+        if args.save:
+            torch.save(model, f"{logs_dir}model{index}_{seed}.pt")
+
     # Trans-seed plotting
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
     if args.verbose:
@@ -255,7 +259,7 @@ def classify_vit(args, X, y, logs_dir):
     :param y: Droplet classes
     :param logs_dir: Sub-directory to save any produced files in
     """
-    lr, bs, E, spl, subdiv_size = 1e-3, 6, 250, (0.667, 0.333), 32
+    lr, bs, E, spl, subdiv_size = 1e-3, 6, 400, (0.667, 0.333), 32
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     performances = {"train_acc": [], "val_acc": []}  # Track performance across multiple seeds
 
@@ -282,7 +286,7 @@ def classify_vit(args, X, y, logs_dir):
 
         # Configure model, optimizer, loss and logs
         n_subdivs, subdiv_dims = len(data[0][0]), len(data[0][0][0])
-        sd, n_dims, n_heads, n_blocks, n_classes = (n_subdivs, subdiv_dims), 16, 8, 2, data.labels()[1]
+        sd, n_dims, n_heads, n_blocks, n_classes = (n_subdivs, subdiv_dims), 16, 8, 1, data.labels()[1]
         model = trans.ViT(sd=sd, n_dims=n_dims, n_heads=n_heads, n_blocks=n_blocks, n_classes=n_classes).to(device)
         logging.critical(f"Model Size: {nets.count_params(model)}")
 
@@ -308,6 +312,11 @@ def classify_vit(args, X, y, logs_dir):
             plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
             plt.plot_attention_by_class(model, data, logs_dir)
 
+        # Save model (expensive!)
+        if args.save:
+            torch.save(model, f"{logs_dir}model{index}_{seed}.pt")
+
+    plt.plot_attention_by_class(model, data, n_blocks, out_dir=logs_dir)
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
 
 

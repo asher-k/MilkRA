@@ -54,7 +54,7 @@ class DropletDataset(Dataset):
         :return: Tupe(List, Int) unique labels, number of labels
         """
         labels = set(self.droplets_label)
-        return labels, len(labels)
+        return list(labels), len(labels)
 
 
 class ToTensor(object):

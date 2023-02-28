@@ -67,18 +67,54 @@ def _cam_ups(final_conv, final_dense, top_class, scale=True, size=None):
     return cams
 
 
-def plot_attention_by_class(model, data, out_dir):
+def plot_attention_by_class(model, data, n_layers, out_dir):
     """
     Displays a line plot of the aggregated attention values assigned to each subdivision over each class.
 
     :param model: ViT model
     :param data: Dataset of droplet samples
+    :param n_layers: Int number of attention blocks in the encoder
     :param out_dir: Output directory
     """
-    attentions_by_class = None
+    attentions_by_class = {0: [], 1: [], 2: [], 3: []}
     for sample in data:
-        pass
-    return None
+        _res, attn = model(torch.unsqueeze(sample[0], dim=0))
+        attentions_by_class[sample[1]].append(attn)
+
+    # aggregate
+    for k, v in attentions_by_class.items():
+        attentions_by_class[k] = [torch.mean(torch.stack([a[i][0] for a in v]), dim=0) for i in range(0, n_layers)]
+    flattened_attn = []
+    for attn in attentions_by_class.values():  # flatten attentions into a single iterable
+        for block in attn:
+            flattened_attn.append(block)
+    logging.info(f"Raw mean attention scores: {flattened_attn}")
+
+    y_labels, x_labels = ["DBM", "GTM", "LBM", "LBP+"], [f"Block {i}" for i in range(0, n_layers)]
+    fig = plt.figure(figsize=(6., 6.))
+    n_rows, n_cols = len(attentions_by_class.keys()), n_layers
+    grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.2)
+
+    for (i, ax), attn in zip(enumerate(grid), flattened_attn):  # Plot over each class/attention block pair
+        cutoff = torch.flatten(attn)[torch.sort(torch.flatten(attn))[1][-10].item()]  # Only plot 10 strongest relations
+        ax.tick_params(axis='x', which='both', bottom=False, labelbottom=False, labelsize=6)
+        ax.set_yticks(list(range(0, len(attn))))
+        ax.set_yticklabels(["<cls>"] + [f"Subdiv {i+1}" for i in range(len(attn)-1)], minor=False, rotation=10)
+        for n in ['top', 'right', 'bottom', 'left']:  # removes the bounding box
+            ax.spines[n].set_visible(False)
+        if i >= (n_rows-1) * n_cols:  # X labels if we are on the final row
+            ax.set_xlabel(x_labels[i - ((n_rows-1) * n_cols)])
+        if i % n_cols == 0:                # Y labels if we are on the first column
+            ax.set_ylabel(y_labels[i // 2])
+
+        for xid, x in enumerate(attn):  # Adds connections between all class pairs
+            for yid, y in enumerate(x):
+                y = y.item() if y.item() >= cutoff else 0
+                ax.plot([0, len(attn)], [xid, yid], alpha=y, color="mediumblue", linewidth=2)
+    fig.suptitle("Mean Attention by Class & Block")
+    fig.supylabel("Class")
+    fig.supxlabel("Attention Block")
+    plt.show()
 
 
 def plot_samplewise_misclassification_rates(baselines, n_display, labels, arguments, out_dir, mname):

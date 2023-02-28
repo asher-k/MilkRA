@@ -37,22 +37,24 @@ class ViT(nn.Module):
         Performs a forward pass of the ViT.
 
         :param x: Tensor data sample
-        :return: Int predicted class, unused auxiliary parameter
+        :return: Int predicted class, unused auxiliary parameter (changed to return mean attentions by layer)
         """
         # Compute embeddings of x and append our class token
         position_x = self.positional_embedding(x)
         x = self.linear_embedding(x)
         x = x + position_x
-        x = torch.stack([torch.vstack((self.v_class, x[i])) for i in range(len(x))])
+        x = torch.stack([torch.vstack((self.v_class, x[i])) for i in range(len(x))])  # stack classification tokens w/ x
 
         # Encoder
+        attns = []
         for block in self.attn_blocks:
-            x = block(x)
+            x, _attn = block(x)
+            attns.append(_attn)
         x = x[:, 0]  # Extract classification token
 
         # Classifier
         prediction = self.classifier(x)
-        return prediction, None
+        return prediction, attns
 
 
 class AttentionBlock(nn.Module):
@@ -84,13 +86,13 @@ class AttentionBlock(nn.Module):
         :return: Transformed sample
         """
         inner_x = self.lnorm1(x)
-        inner_x = self.mhsa(inner_x)
+        inner_x, _attns = self.mhsa(inner_x)
         x_bp = inner_x + x  # Propagate original embeddings through residual connection, store as a breakpoint for later
 
         inner_x = self.lin1(self.lnorm2(x_bp))  # MLP
         inner_x = self.lin2(self.gelu(inner_x))
         x = inner_x + x_bp  # Second residual connection
-        return x
+        return x, _attns
 
 
 class MultiHeadSelfAttention(nn.Module):
@@ -115,22 +117,25 @@ class MultiHeadSelfAttention(nn.Module):
         Input: (B, C, D)
         Output: (B, C, D)
 
-        :param x: Tensor bacth of data samples
+        :param x: Tensor batch of data samples
         :return: Transformed sample
         """
         results = []
-        for sample in x:
+        attns = [[] for i in range(len(x))]
+        for i, sample in enumerate(x):
             s_results = []
             for h in range(self.nheads):
                 q, k, v = self.q_vectors[h], self.k_vectors[h], self.v_vectors[h]
                 window = sample[:, h * self.hdims: (h+1) * self.hdims]  # Obtain embedding window for the hth head
                 q, k, v = q(window), k(window), v(window)
                 a = self.sm(q @ k.T / (self.hdims ** 0.5))  # Product of the queries & keys, plus scaling, masking & SM
+                attns[i].append(a)
                 a = a @ v  # Then obtain product with the values
                 s_results.append(a)
+            attns[i] = torch.mean(torch.stack([a for a in attns[i]]), dim=0)  # compute mean attention over heads
             results.append(torch.hstack(s_results))
         results = [torch.unsqueeze(r, dim=0) for r in results]  # Expand out the final dimension to match input shape
-        return torch.cat(results)
+        return torch.cat(results), attns
 
 
 def _sinusoidal_positional_embeddings(x, n=None):

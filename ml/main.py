@@ -84,7 +84,7 @@ def preconditions(a):
             "Received arguments for features_at and features_selection; selected features will rely on the subset")
     if not a.save and not a.verbose:
         logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
-    if a.save and any([t in a.experiment for t in ['dl', 'vit']] and a.num_states > 1):
+    if a.save and a.num_states > 1 and any([t in a.experiment for t in ['dl', 'vit']]):
         logging.warning("Saving is enabled for multiple PyTorch models! All models will save at the cost of disk space")
 
 
