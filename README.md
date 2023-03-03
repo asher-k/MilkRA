@@ -42,9 +42,21 @@ In every run two outputs are always guaranteed in the form of `csv` files. `<nam
 ![alt text](https://github.com/veryeager/milkra/blob/main/content/README_diagram.png?raw=true)
 
 ## Machine Learning
-### Baselines
-
 ## Visualizations
 We divide our approach to visualizations into two categories, _ad-hoc_ and _post-hoc_. _ad-hoc_ visualizations are produced at runtime from functions in `ml/plot.py` and provide context or results on a single experiment run. Our _post-hoc_ visuals found in `visuals/visuals.py` aggregate results over multiple runs or experiments and produce comparative figures.
 
 If you're looking for a visualization function, it's probably in `ml/plot.py` and is produced at runtime. _post-hoc_ visuals are only necessary when comparing hyperparameter settings on our baseline classification experiment.
+
+## Moving Forward
+There are several avenues worth exploring in future studies, as well as several current duties which should be finished prior to the concolusion of the contract. These include, though are not limited to:
++ Refactoring and documenting older code, specifically in `visuals/` and `preprocessing/`. 
++ Improving stability of scripts by addressing active issues.
++ Composing a short (<5 page) document providing instructions and commentary on running ML scripts.
++ Developing a clean format for figures and re-running experiments to obtain them.
++ Implementing a method for batched model loading in experiments.
++ Improving script exporting & logging clarities and directories.
++ Expanding all scripts for more than 4-classes.
+
+Further research can involve:
++ Producing Self-attention Attribution visualizations per [Hao et al](https://arxiv.org/abs/2004.11207)
++ Improving stability of our Transformers by applying Admin initialization scheme per [Liu et al](https://arxiv.org/abs/2004.08249)
