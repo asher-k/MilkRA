@@ -134,6 +134,8 @@ dmypy.json
 # Project-specific ignores
 logs/*/
 data/*/
+output/experiments/*
+!output/experiments/README.md
 logs_backup/
 ml/_backup.txt
 *.Rhistory

@@ -64,12 +64,13 @@ class Clustering:
         ahc.fit(self.samples, self.labels)
         return ahc
 
-    def plot_dendrogram(self, model, **kwargs):
+    def plot_dendrogram(self, model, out_dir, **kwargs):
         """
         Displays a dendrogram of the provided clustering model. Extended from
         https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html.
 
-        :param model:
+        :param model: Trained clustering model
+        :param out_dir: Output directory
         """
         # Compute linkage matrix
         counts = np.zeros(model.children_.shape[0])
@@ -96,7 +97,7 @@ class Clustering:
         # Display with colour labels
         patches = [mpatches.Patch(color=v, label=k) for k, v in lab_to_col.items()]
         ax.legend(handles=patches)
-        plt.show()
+        plt.savefig(f"{out_dir}figs/Dendrogram.png")
 
 
 class Baselines:

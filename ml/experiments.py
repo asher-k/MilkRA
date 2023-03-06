@@ -18,14 +18,14 @@ from sklearn.model_selection import train_test_split
 from data import format_name, _col_order, run_pca, run_umap, DropletDataset, ToTensor, FloatTransform, SubdivTransform
 
 
-def classify_baselines(args, X, y, logs_dir):
+def classify_baselines(args, X, y, out_dir):
     """
     Classification experiment on baseline non-time series models
 
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
-    :param logs_dir: Subdirectory to export logs
+    :param out_dir: Subdirectory to export logs & generate files to
     """
     baselines = Baselines()
 
@@ -70,7 +70,7 @@ def classify_baselines(args, X, y, logs_dir):
         results = results.to_frame().transpose()
         results = results.reindex(sorted(results.columns), axis=1)
         logging.info(msg="\nPerformance Statistics: {mod}\n{res}\n".format(mod=model_name, res=str(results)))
-        save_dir = "{log}{mod}/".format(log=logs_dir, mod=model_name)
+        save_dir = "{log}{mod}/".format(log=out_dir, mod=model_name)
 
         # save performance results to csv file(s) with any produced plots
         if args.save:
@@ -110,15 +110,14 @@ def classify_baselines(args, X, y, logs_dir):
                     dt_splits.to_csv(imp_name)  # need to update save dir...
 
 
-def classify_ts(args, X, y, logs_dir):
+def classify_ts(args, X, y, out_dir):
     """
     Classification experiment with Time-series models.
 
-    :param logs_dir:
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
-    :param logs_dir: Logging directory for visualization export
+    :param out_dir: Sub-directory to save any produced files in
     """
     models = TSBaselines()
     nprand.seed(0)
@@ -146,16 +145,17 @@ def classify_ts(args, X, y, logs_dir):
 
         # display & save confusion matrix
         if args.verbose:
-            plt.plot_confusion_matrix(cm, y, args, logs_dir, mname=args.name)
+            plt.plot_confusion_matrix(cm, y, args, out_dir, mname=args.name)
 
 
-def clustering(args, X, y):
+def clustering(args, X, y, out_dir):
     """
     Clustering experiment on our PCA'd data.
 
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
+    :param out_dir: Sub-directory to save any produced files in
     """
     clusters = Clustering()
     if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
@@ -164,19 +164,19 @@ def clustering(args, X, y):
     clusters.data(X, y)
     model = clusters.m[args.model][0]
     model = model()
-    clusters.plot_dendrogram(model)
+    clusters.plot_dendrogram(model, out_dir)
 
 
-def classify_dl(args, X, y, logs_dir):
+def classify_dl(args, X, y, out_dir):
     """
     Classification experiment with DL models.
 
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
-    :param logs_dir: Sub-directory to save any produced files in
+    :param out_dir: Sub-directory to save any produced files in
     """
-    lr, bs, E, spl = 1e-4, 6, 50, (0.667, 0.333)  # 70-30 train-test split
+    lr, bs, E, spl = args.pyt_lr, args.pyt_bs, args.pyt_epochs, args.pyt_data_split
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     performances = {"train_acc": [], "val_acc": []}  # Track performance across multiple seeds
     cams = {"variance": [], "mean": [], "median": []}  # Track aggregated CAMs across multiple seeds
@@ -189,7 +189,7 @@ def classify_dl(args, X, y, logs_dir):
     ])
     tr_size, val_size = int(data.__len__() * spl[0]) + 1, int(data.__len__() * spl[1])
 
-    for index, seed in enumerate(nprand.randint(0, 99999, size=args.num_states)):
+    for index, seed in enumerate(nprand.randint(0, 999999999, size=args.num_states)):
         # Sub-seed setup
         seed = int(seed)  # why????
         nprand.seed(seed)
@@ -203,7 +203,7 @@ def classify_dl(args, X, y, logs_dir):
         trainSteps, valSteps = len(trainLoader.dataset) // bs, len(testLoader.dataset) // bs
 
         # Initialize model, optimizer, logs
-        ks = 3 if args.type == "processed" else 5
+        ks = 3 if args.type == "processed" else 5  # adaptive kernel size
         model = nets.CMapNN(num_classes=data.labels()[1], kernel_size=ks).to(device)
         logging.info(f"Model Size: {nets.count_params(model)}")
 
@@ -214,7 +214,6 @@ def classify_dl(args, X, y, logs_dir):
 
         # Training & validation; if verbose track convolutional filters at each epoch
         for e in (bar := tqdm(range(0, E))):
-            logging.info(f"Epoch: {e}")
             performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
             performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
             t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
@@ -229,37 +228,36 @@ def classify_dl(args, X, y, logs_dir):
 
         # Verbosity-enabled plotting
         if args.verbose:
-            plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
-            for i, d in enumerate(data):  # CAMs
-                plt.compute_class_activation_maps(model, d[0], d[1], logs_dir, str(i))
-                cams["mean"].append(plt.compute_aggregated_cams(model, data, logs_dir, np.mean, str(seed)))
-                cams["median"].append(plt.compute_aggregated_cams(model, data, logs_dir, np.median, str(seed)))
-                cams["variance"].append(plt.compute_aggregated_cams(model, data, logs_dir, np.var, str(seed)))
-            # Plot evolution of convolutional filters
-            conv1_trend = [v[0] for k, v in conevolution.items()]
-            plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=logs_dir, title=f"seed{seed}",
-                                             fname=f"{args.name}:{seed}_convolutions", )
+            plt.plot_epoch_performance(E, performance_log.keys(), out_dir, seed, *[i[1] for i in performance_log.items()])
+            # for i, d in enumerate(data):  # CAMs  # TODO: export cams to seed subdir
+            #     plt.compute_class_activation_maps(model, d[0], d[1], out_dir, str(i), display=True)
+            #     cams["mean"].append(plt.compute_aggregated_cams(model, data, out_dir, np.mean, str(seed)))
+            #     cams["median"].append(plt.compute_aggregated_cams(model, data, out_dir, np.median, str(seed)))
+            #     cams["variance"].append(plt.compute_aggregated_cams(model, data, out_dir, np.var, str(seed)))
+            # # Plot evolution of convolutional filters
+            # conv1_trend = [v[0] for k, v in conevolution.items()]  # TODO: figure out why conv exporting errors
+            # plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=out_dir, title=f"seed: {seed}", fname=f"_{seed}")
         # Save model (expensive!)
         if args.save:
-            torch.save(model, f"{logs_dir}model{index}_{seed}.pt")
+            torch.save(model, f"{out_dir}models/model{index}_{seed}.pt")
 
     # Trans-seed plotting
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
     if args.verbose:
-        plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"])
-        plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], tr_size, val_size)
+        plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"], out_dir)
+        plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], out_dir, tr_size, val_size)
 
 
-def classify_vit(args, X, y, logs_dir):
+def classify_vit(args, X, y, out_dir):
     """
     Vision Transformer classification experiment.
 
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
-    :param logs_dir: Sub-directory to save any produced files in
+    :param out_dir: Sub-directory to save any produced files in
     """
-    lr, bs, E, spl, subdiv_size = 1e-3, 6, 500, (0.667, 0.333), 8
+    lr, bs, E, spl, subdiv_size = args.pyt_lr, args.pyt_bs, args.pyt_epochs, args.pyt_data_split, args.vit_subdiv_size
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     performances = {"train_acc": [], "val_acc": []}  # Track performance across multiple seeds
 
@@ -271,7 +269,7 @@ def classify_vit(args, X, y, logs_dir):
     ])
     tr_size, val_size = int(data.__len__() * spl[0]) + 1, int(data.__len__() * spl[1])
 
-    for index, seed in enumerate(nprand.randint(0, 99999, size=args.num_states)):
+    for index, seed in enumerate(nprand.randint(0, 999999999, size=args.num_states)):
         # Sub-seed setup
         seed = int(seed)
         nprand.seed(seed)
@@ -286,7 +284,8 @@ def classify_vit(args, X, y, logs_dir):
 
         # Configure model, optimizer, loss and logs
         n_subdivs, subdiv_dims = len(data[0][0]), len(data[0][0][0])
-        sd, n_dims, n_heads, n_blocks, n_classes = (n_subdivs, subdiv_dims), 16, 8, 1, data.labels()[1]
+        sd, n_dims, n_heads, n_blocks, n_classes = (n_subdivs, subdiv_dims), args.vit_dims, args.vit_heads, \
+                                                   args.vit_blocks, data.labels()[1]
         model = trans.ViT(sd=sd, n_dims=n_dims, n_heads=n_heads, n_blocks=n_blocks, n_classes=n_classes).to(device)
         logging.critical(f"Model Size: {nets.count_params(model)}")
 
@@ -297,7 +296,6 @@ def classify_vit(args, X, y, logs_dir):
 
         # Training & validation
         for e in (bar := tqdm(range(0, E))):
-            logging.info(f"Epoch: {e}")
             performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log, lrs=sr)
             performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
             t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
@@ -309,14 +307,14 @@ def classify_vit(args, X, y, logs_dir):
 
         # Verbosity-enabled plotting
         if args.verbose:
-            plt.plot_epoch_performance(E, performance_log.keys(), *[i[1] for i in performance_log.items()])
-            plt.plot_attention_by_class(model, data, logs_dir)
+            plt.plot_epoch_performance(E, performance_log.keys(), out_dir, seed, *[i[1] for i in performance_log.items()])
+            plt.plot_attention_by_class(model, data, n_blocks, out_dir)  # TODO: probably needs filename arg
 
         # Save model (expensive!)
         if args.save:
-            torch.save(model, f"{logs_dir}model{index}_{seed}.pt")
+            torch.save(model, f"{out_dir}models/model{index}_{seed}.pt")
 
-    plt.plot_attention_by_class(model, data, n_blocks, out_dir=logs_dir)
+    plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], out_dir, tr_size, val_size)
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
 
 
@@ -350,7 +348,6 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
         # loss & accuracy logging
         train_loss += loss
         train_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
-        print(model.linear_embedding.weight.grad)
     if lrs is not None:
         lrs.step()
         logging.info(f"LR, {lrs.get_lr()}")
@@ -359,7 +356,7 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
         plt.plot_conv_visualizations(model.conv1, )
     log["train_loss"].append(train_loss.item())
     log["train_acc"].append(train_acc)
-    logging.info(f"train_loss {train_loss.item()}, train_acc {train_acc}")
+    # logging.info(f"train_loss {train_loss.item()}, train_acc {train_acc}")
     return log
 
 
@@ -385,7 +382,7 @@ def _dl_validate(model, loader, device, loss_fn, log):
             val_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
     log["val_loss"].append(val_loss.item())
     log["val_acc"].append(val_acc)
-    logging.info(f"val_loss {val_loss.item()}, val_acc {val_acc}")
+    # logging.info(f"val_loss {val_loss.item()}, val_acc {val_acc}")
     return log
 
 

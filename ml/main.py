@@ -4,6 +4,7 @@ python main.py --type processed --seed 1 --num_states 60 --save --experiment EXP
 import os
 import logging
 import sys
+import json
 import numpy.random as nprand
 import experiments as exp
 
@@ -22,12 +23,12 @@ def define_arguments():
     a.add_argument('--name', default='run', type=str,
                    help='Experiment name appended to files')
     a.add_argument('--seed', default=1, type=int,
-                   help='Initial super seed of random for generating random seeds')
+                   help='Initial root seed of random for generating random seeds')
     a.add_argument('--verbose', default=False, action=BooleanOptionalAction,
                    help='Prints performance statistics to console & log and enables export of experiment figures')
     a.add_argument('--dir', default='../data/processed', type=str,
                    help='Path to data folders')
-    a.add_argument('--logs_dir', default='../logs/', type=str,
+    a.add_argument('--out_dir', default='../output/', type=str,
                    help='Path to logs directory')
     a.add_argument('--save', default=False, action=BooleanOptionalAction,
                    help='Save performance statistics to a CSV in the logging directory; also saves PyTorch models')
@@ -45,6 +46,24 @@ def define_arguments():
                    help='ML baseline to obtain results on; can be \'all\' to sequentially run all baselines.')
     a.add_argument('--num_states', default=1, type=int,
                    help='Number of random states to compute model performances at')
+
+    # PyTorch Deep Learning arguments
+    a.add_argument('--pyt_lr', default=1e-3, type=float,
+                   help='Model Learning Rate')
+    a.add_argument('--pyt_bs', default=6, type=int,
+                   help='Batch size; smaller values preferred due to low sample count')
+    a.add_argument('--pyt_epochs', default=50, type=int,
+                   help='Number of training epochs')
+    a.add_argument('--pyt_data_split', default=(0.667, 0.333), type=tuple,
+                   help='Tuple of (train split, test split) floats. Should sum to 1.0')
+    a.add_argument('--vit_subdiv_size', default=4, type=int,
+                   help='Subdivision size of our droplet samples for our ViT')
+    a.add_argument('--vit_dims', default=16, type=int,
+                   help='Hidden dimensions of our ViT embedding')
+    a.add_argument('--vit_heads', default=4, type=int,
+                   help='Number of Attention Heads within our MHSA module')
+    a.add_argument('--vit_blocks', default=1, type=int,
+                   help='Number of transformer blocks within our ViT')
 
     # Data/preprocessing arguments
     a.add_argument('--type', default='processed', type=str, choices=['processed', 'raw'],
@@ -83,7 +102,7 @@ def preconditions(a):
         logging.warning(
             "Received arguments for features_at and features_selection; selected features will rely on the subset")
     if not a.save and not a.verbose:
-        logging.warning("Saving and Verbosity are both disabled! Only partial results are obtainable through log files")
+        logging.warning("Saving and Verbosity are both disabled! Full results may not be available.")
     if a.save and a.num_states > 1 and any([t in a.experiment for t in ['dl', 'vit']]):
         logging.warning("Saving is enabled for multiple PyTorch models! All models will save at the cost of disk space")
 
@@ -91,22 +110,24 @@ def preconditions(a):
 # Delegate mode to correct model, using the provided arguments.
 if __name__ == '__main__':
     args = define_arguments()
-    preconditions(args)
+
+    # directory init
+    out_dir = "{od}experiments/{e}/".format(od=args.out_dir, e=args.name)
+    logs_name = f"{out_dir}logs_{args.name}.txt"
+    for d in [f"{out_dir}figs/", f"{out_dir}models/"]:
+        if not os.path.exists(d):
+            os.makedirs(d)
 
     # logging init
-    logs_dir = "{ld}{td}/{ed}/".format(ld=args.logs_dir, td=args.type, ed=args.name)
-    logs_name = format_name(args, d=logs_dir, ext=".txt")
-    if not os.path.exists(logs_dir):
-        os.makedirs(logs_dir)
-    logging.basicConfig(filename=logs_name,
-                        format="%(asctime)s: %(message)s",
-                        filemode="w")
-    logging.getLogger().setLevel(logging.CRITICAL)
+    fh = logging.FileHandler(logs_name, mode="w")
+    fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logging.getLogger().addHandler(fh)
+    logging.getLogger().setLevel(logging.INFO)
     logging.getLogger('matplotlib.font_manager').disabled = True
-    if args.verbose:
-        logging.getLogger().setLevel(logging.INFO)
-        # logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
-    logging.info("Starting Preprocessing...")
+    with open(f'{out_dir}args.txt', 'w') as f:
+        json.dump(args.__dict__, f, indent=2)
+    preconditions(args)  # check command-line arguments are valid
+    logging.getLogger().info("Starting Preprocessing...")
 
     # load & reformat datasets
     nprand.seed(args.seed)
@@ -117,20 +138,20 @@ if __name__ == '__main__':
                         ranges=args.load_ranges,
                         features=args.features_at,
                         normalize=args.normalize,
-                        ts=any([True if d in args.experiment else False for d in ["ts", "dl", "vit"]])
+                        ts=any([True if d in args.experiment else False for d in ["ts", "dl", "vit"]])  # in-line check
                         )
 
     # delegate to experiment script
     logging.info(f"Delegating: {args.experiment}, {args.model}")
     if args.experiment == "classify:baseline":
-        exp.classify_baselines(args, data, labels, logs_dir)
-    elif args.experiment == "classify:dl":
-        exp.classify_dl(args, data, labels, logs_dir)
+        exp.classify_baselines(args, data, labels, out_dir)
     elif args.experiment == "classify:ts":
-        exp.classify_ts(args, data, labels, logs_dir)
-    elif args.experiment == "classify:vit":
-        exp.classify_vit(args, data, labels, logs_dir)
+        exp.classify_ts(args, data, labels, out_dir)
     elif args.experiment == "cluster":
-        exp.clustering(args, data, labels)
+        exp.clustering(args, data, labels, out_dir)
+    elif args.experiment == "classify:dl":
+        exp.classify_dl(args, data, labels, out_dir)
+    elif args.experiment == "classify:vit":
+        exp.classify_vit(args, data, labels, out_dir)
     else:
         raise ValueError("Unable to delegate experiment type {exp}".format(exp=args.experiment))
