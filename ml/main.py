@@ -32,6 +32,8 @@ def define_arguments():
                    help='Path to logs directory')
     a.add_argument('--save', default=False, action=BooleanOptionalAction,
                    help='Save performance statistics to a CSV in the logging directory; also saves PyTorch models')
+    a.add_argument('--load', default=False, action=BooleanOptionalAction,
+                   help='Loads pretrained PyTorch models from out_dir')
     a.add_argument('--only_acc', default=False, action=BooleanOptionalAction,
                    help='Only save direct model outputs')
     a.add_argument('--importance', default=False, action=BooleanOptionalAction,
@@ -111,23 +113,30 @@ def preconditions(a):
 if __name__ == '__main__':
     args = define_arguments()
 
-    # directory init
     out_dir = "{od}experiments/{e}/".format(od=args.out_dir, e=args.name)
     logs_name = f"{out_dir}logs_{args.name}.txt"
-    for d in [f"{out_dir}figs/", f"{out_dir}models/"]:
-        if not os.path.exists(d):
-            os.makedirs(d)
 
-    # logging init
-    fh = logging.FileHandler(logs_name, mode="w")
-    fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    logging.getLogger().addHandler(fh)
-    logging.getLogger().setLevel(logging.INFO)
-    logging.getLogger('matplotlib.font_manager').disabled = True
-    with open(f'{out_dir}args.txt', 'w') as f:
-        json.dump(args.__dict__, f, indent=2)
-    preconditions(args)  # check command-line arguments are valid
-    logging.getLogger().info("Starting Preprocessing...")
+    if not args.load:  # directory init
+        for d in [f"{out_dir}figs/", f"{out_dir}models/"]:
+            if not os.path.exists(d):
+                os.makedirs(d)
+            else:
+                raise ValueError(f"Files already exist for experiment {args.name}! Please re-run under a different name.")
+        # logging init
+        fh = logging.FileHandler(logs_name, mode="w")
+        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logging.getLogger().addHandler(fh)
+        logging.getLogger().setLevel(logging.INFO)
+        logging.getLogger('matplotlib.font_manager').disabled = True
+        with open(f'{out_dir}args.txt', 'w') as f:
+            json.dump(args.__dict__, f, indent=2)
+        preconditions(args)  # check command-line arguments are valid
+        logging.getLogger().info("Starting Preprocessing...")
+    else:  # Load from a provided model checkpoint
+        args_dict = json.load(open(f"{out_dir}args.txt"))
+        for key in args_dict.keys():
+            if key != "load":  # Don't want to overwrite intended script mode
+                args.__dict__[key] = args_dict[key]
 
     # load & reformat datasets
     nprand.seed(args.seed)

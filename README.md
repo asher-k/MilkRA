@@ -42,6 +42,8 @@ In every run two outputs are always guaranteed in the form of `csv` files. `<nam
 ![alt text](https://github.com/veryeager/milkra/blob/main/content/README_diagram.png?raw=true)
 
 ## Machine Learning
+We make approach classification from several perspectives, including dimensionality reduction, time-series and computer vision methods. We define a set of baseline models including MLP, SVC and decision trees, in addition to time-series baselines, fully-convolutional CNNs, and Vision Transformers. Please refer to the user guidebook for further information.
+
 ## Visualizations
 We divide our approach to visualizations into two categories, _ad-hoc_ and _post-hoc_. _ad-hoc_ visualizations are produced at runtime from functions in `ml/plot.py` and provide context or results on a single experiment run. Our _post-hoc_ visuals found in `visuals/visuals.py` aggregate results over multiple runs or experiments and produce comparative figures.
 
@@ -56,6 +58,7 @@ There are several avenues worth exploring in future studies, as well as several 
 + Implementing a method for batched model loading in experiments.
 + Improving script exporting & logging clarities and directories.
 + Expanding all scripts for more than 4-classes.
++ Investigating angle measurement script and attempting to integrate it with our preprocessing.
 
 Further research can involve:
 + Producing Self-attention Attribution visualizations per [Hao et al](https://arxiv.org/abs/2004.11207)

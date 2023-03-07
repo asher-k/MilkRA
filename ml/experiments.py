@@ -212,23 +212,31 @@ def classify_dl(args, X, y, out_dir):
         performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
         conevolution = {}  # convolution + evolution lol
 
-        # Training & validation; if verbose track convolutional filters at each epoch
-        for e in (bar := tqdm(range(0, E))):
-            performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
-            performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
-            t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
-            bar.set_description(f"t{t} v{v}")  # Update bar description
-            if args.verbose:
-                conevolution[e] = [np.copy(model.conv3.weight.detach().numpy())]
-
-        # compute actual performances by aggregating across batches/steps, then save for trans-seed tracking
-        performance_log = _normalize_performance_logs(performance_log, trainSteps, tr_size, valSteps, val_size)
-        performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
-        performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
+        if not args.load:  # Training & validation
+            for e in (bar := tqdm(range(0, E))):
+                performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
+                performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
+                t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
+                bar.set_description(f"t{t} v{v}")  # Update bar description
+                if args.verbose:
+                    conevolution[e] = [np.copy(model.conv3.weight.detach().numpy())]
+            performance_log = _normalize_performance_logs(performance_log, trainSteps, tr_size, valSteps, val_size)
+            performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
+            performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
+        else:  # Load from checkpoint & obtain final performances
+            logging.critical(f"Loading model {index} with seed {seed}.")
+            model.load_state_dict(torch.load(f"{out_dir}models/model{index}_{seed}.pt"))
+            for metric in performance_log.keys():
+                performance_log[metric].append(_dl_validate(model, trainLoader if "train" in metric else testLoader,
+                                                            device, loss_fn, performance_log)[metric.replace("train", "val")][0])
+            performance_log = _normalize_performance_logs(performance_log, trainSteps, tr_size, valSteps, val_size)  # TODO: investigate why validation logs have more than 1 value
+            performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
+            performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
 
         # Verbosity-enabled plotting
         if args.verbose:
-            plt.plot_epoch_performance(E, performance_log.keys(), out_dir, seed, *[i[1] for i in performance_log.items()])
+            pass
+            # plt.plot_epoch_performance(E, performance_log.keys(), out_dir, f"{index}_{seed}", *[i[1] for i in performance_log.items()])
             # for i, d in enumerate(data):  # CAMs  # TODO: export cams to seed subdir
             #     plt.compute_class_activation_maps(model, d[0], d[1], out_dir, str(i), display=True)
             #     cams["mean"].append(plt.compute_aggregated_cams(model, data, out_dir, np.mean, str(seed)))
@@ -239,7 +247,7 @@ def classify_dl(args, X, y, out_dir):
             # plt.animate_convolution_by_epoch(conv1_trend, f=5, t=E, out_dir=out_dir, title=f"seed: {seed}", fname=f"_{seed}")
         # Save model (expensive!)
         if args.save:
-            torch.save(model, f"{out_dir}models/model{index}_{seed}.pt")
+            torch.save(model.state_dict(), f"{out_dir}models/model{index}_{seed}.pt")
 
     # Trans-seed plotting
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
@@ -295,24 +303,28 @@ def classify_vit(args, X, y, out_dir):
         performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
 
         # Training & validation
-        for e in (bar := tqdm(range(0, E))):
-            performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log, lrs=sr)
-            performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
-            t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
-            bar.set_description(f"t{t} v{v}")  # Update bar description
-
-        performance_log = _normalize_performance_logs(performance_log, trainSteps, tr_size, valSteps, val_size)
-        performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
-        performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
+        if not args.load:
+            for e in (bar := tqdm(range(0, E))):
+                performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log, lrs=sr)
+                performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
+                t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
+                bar.set_description(f"t{t} v{v}")  # Update bar description
+            performance_log = _normalize_performance_logs(performance_log, trainSteps, tr_size, valSteps, val_size)
+            performances["train_acc"].append(round(performance_log["train_acc"][-1], 3))
+            performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
+        else:
+            logging.critical(f"Loading model {index} with seed {seed}.")
+            model.load_state_dict(torch.load(f"{out_dir}models/model{index}_{seed}.pt"))
+            model.eval()
 
         # Verbosity-enabled plotting
         if args.verbose:
-            plt.plot_epoch_performance(E, performance_log.keys(), out_dir, seed, *[i[1] for i in performance_log.items()])
+            plt.plot_epoch_performance(E, performance_log.keys(), out_dir, f"{index}_{seed}", *[i[1] for i in performance_log.items()])
             plt.plot_attention_by_class(model, data, n_blocks, out_dir)  # TODO: probably needs filename arg
 
         # Save model (expensive!)
         if args.save:
-            torch.save(model, f"{out_dir}models/model{index}_{seed}.pt")
+            torch.save(model.state_dict(), f"{out_dir}models/model{index}_{seed}.pt")
 
     plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], out_dir, tr_size, val_size)
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
@@ -360,7 +372,7 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
     return log
 
 
-def _dl_validate(model, loader, device, loss_fn, log):
+def _dl_validate(model, loader, device, loss_fn, log, verbose=False):
     """
     Verifies model performance on the validation set
 
@@ -369,6 +381,7 @@ def _dl_validate(model, loader, device, loss_fn, log):
     :param device: Current device to run on
     :param loss_fn: Callable Loss Function; requires inputs in the form of (pred_label, act_label)
     :param log: Dict containing training/validation keys for tracking
+    :param verbose: Enables function verbosity
 
     :return: Log updated with validation statistics
     """
@@ -382,7 +395,8 @@ def _dl_validate(model, loader, device, loss_fn, log):
             val_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
     log["val_loss"].append(val_loss.item())
     log["val_acc"].append(val_acc)
-    # logging.info(f"val_loss {val_loss.item()}, val_acc {val_acc}")
+    if verbose:
+        logging.info(f"val_loss {val_loss.item()}, val_acc {val_acc}")
     return log
 
 

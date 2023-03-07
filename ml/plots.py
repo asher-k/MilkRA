@@ -294,7 +294,7 @@ def plot_epoch_performance(n_epochs, labels, out_dir, mname, *metrics):
     :param n_epochs: Number of epochs used for training
     :param labels: Labels corresponding to each tracked metric; should always be same size as *metrics
     :param out_dir: Export directory for the file
-    :param mname: Model name appended during file export; ideally just the seed
+    :param mname: Model name appended during file export; ideally just the index & seed
     """
     eps = list(range(1, n_epochs+1))
     assert len(labels) == len(metrics)
