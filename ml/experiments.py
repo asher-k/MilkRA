@@ -375,7 +375,8 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
     :param loss_fn: Callable Loss Function; requires inputs in the form of (pred_label, act_label)
     :param opt: Model Optimizer
     :param log: Dict containing training/validation keys for tracking
-    :param verbose: Enables
+    :param verbose: Enables logging/plotting of the model
+    :param lrs: Learning rate scheduler (if being used)
 
     :return: Log updated with epoch statistics
     """
@@ -399,16 +400,16 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
         lrs.step()
     if verbose:  # not recommended; purely debugging
         logging.info(f"LR, {lrs.get_lr()}")
+        logging.info(f"train_loss {train_loss.item()}, train_acc {train_acc}")
         # plt.plot_conv_visualizations(model.conv1, )
     log["train_loss"].append(train_loss.item())
     log["train_acc"].append(train_acc)
-    # logging.info(f"train_loss {train_loss.item()}, train_acc {train_acc}")
     return log
 
 
 def _dl_validate(model, loader, device, loss_fn, log, verbose=False, log_type="val"):
     """
-    Verifies model performance on the validation set
+    Verifies model performance on a dataset. Data is assumed to be validation, however can also use the training data.
 
     :param model: CNN or other PyTorch NN Module to evaluate
     :param loader: DataLoader containing validation data
@@ -416,6 +417,7 @@ def _dl_validate(model, loader, device, loss_fn, log, verbose=False, log_type="v
     :param loss_fn: Callable Loss Function; requires inputs in the form of (pred_label, act_label)
     :param log: Dict containing training/validation keys for tracking
     :param verbose: Enables function verbosity
+    :param log_type: String name of the log to append; one of "train" or "val"
 
     :return: Log updated with validation statistics
     """

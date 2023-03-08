@@ -3,18 +3,19 @@ import logging
 import pandas as pd
 import numpy as np
 import seaborn as sns
+import scienceplots
 import matplotlib.lines as lines
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.animation as animation
 
 import models
-from data import format_name
 from functools import partial
 from mpl_toolkits.axes_grid1 import ImageGrid
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
-from PIL.Image import Image, fromarray
+from PIL.Image import fromarray
 from sklearn.metrics import ConfusionMatrixDisplay
+# plt.style.use(['science'])
 
 
 def _aggregate_image(X, y, agg_type="mean"):
@@ -310,7 +311,7 @@ def plot_epoch_performance(n_epochs, labels, out_dir, mname, *metrics):
     for metric, label in zip(metrics, labels):
         plt.plot(eps, metric,  label=label)
     plt.title("Loss/Accuracy by Epoch")
-    plt.xlabel("Epoch #")
+    plt.xlabel("Epoch")
     plt.ylabel("Loss/Accuracy")
     plt.legend(loc="lower left")
     plt.savefig(f"{out_dir}Epochs_{mname}.png")

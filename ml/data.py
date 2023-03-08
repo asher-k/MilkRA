@@ -169,7 +169,6 @@ def format_name(arg, d=None, ext=None):
         type=arg.type,
         norm=f"norm{arg.normalize}",
         avg="mpmean." if arg.centre_avg else "",
-        only=""+str(arg.load_only) if str(arg.load_only) is not None else "",
         ext=ext
     )
     return fname
@@ -202,9 +201,7 @@ def load(data_dir, data_type, **kwargs):
         [norm_consts.append(s.iloc[0, i]) for s, i in zip(seqs, index_cols)]  # update normalization constant
         seqs = [s[_col_order(data_type)] for s in seqs]  # reshape column orders according to dataset used
 
-        if kwargs['only'] is not None:  # row selection; irrelevant rows are discarded
-            seqs = [i.iloc[kwargs['only'], :] for i in seqs]
-        elif kwargs['at'] is not None:
+        if kwargs['at'] is not None:  # row selection; irrelevant rows are discarded
             seqs = [i.iloc[kwargs['at'], :] for i in seqs]
         elif kwargs['ranges'] is not None:
             ranges = _parse_ranges(kwargs['ranges'])

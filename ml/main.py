@@ -74,8 +74,6 @@ def define_arguments():
     # Data/preprocessing arguments
     a.add_argument('--type', default='processed', type=str, choices=['processed', 'raw'],
                    help='Samples contain a raw and processed csv file; this designates which one is used by our models')
-    a.add_argument('--load_only', default=None, type=int,
-                   help='Only load droplet at the given time step')
     a.add_argument('--load_at', nargs="+", type=int,
                    help='Concatenates flattened droplet data at the specified time steps')
     a.add_argument('--load_ranges', nargs="+", type=str,
@@ -100,10 +98,8 @@ def preconditions(a):
 
     :param a: ArgParser object
     """
-    if a.centre_avg and a.load_only is not None:
+    if a.centre_avg and a.features_at is not None:
         raise ValueError("Simultaneous centre_avg and load_only is unsupported; please run with only one argument.")
-    if a.load_only is not None and a.load_at is not None:
-        logging.warning("Received arguments for load_only and load_at; ignoring --load_at {la}".format(la=a.load_at))
     if a.features_at is not None and a.features_selection != "none":
         logging.warning(
             "Received arguments for features_at and features_selection; selected features will rely on the subset")
@@ -153,7 +149,6 @@ if __name__ == '__main__':
     nprand.seed(args.seed)
     data, labels = load(args.dir, args.type,
                         centre_avg=args.centre_avg,
-                        only=args.load_only,
                         at=args.load_at,
                         ranges=args.load_ranges,
                         features=args.features_at,
