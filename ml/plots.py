@@ -3,7 +3,6 @@ import logging
 import pandas as pd
 import numpy as np
 import seaborn as sns
-import scienceplots
 import matplotlib.lines as lines
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -15,7 +14,8 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from PIL.Image import fromarray
 from sklearn.metrics import ConfusionMatrixDisplay
-# plt.style.use(['science'])
+
+plt.style.use("seaborn-pastel")
 
 
 def _aggregate_image(X, y, agg_type="mean"):
@@ -135,7 +135,7 @@ def plot_samplewise_misclassification_rates(m, n_display, labels, arguments, out
     # First apply lite preprocessing to obtain relevant rates & samples
     misc_rates = {}
     if type(m) in [models.Baselines, ]:
-        misc_rates = {str(k): round(v[0] / v[1], 3) for k, v in m.preddict.items()}
+        misc_rates = {str(k): round(v[0] / v[1], 3) if v[1] > 0 else 0 for k, v in m.preddict.items()}
     elif type(m[0]) == torch.nn.Module:
         misc_rates = {}  # TODO: implement sample-wise misclassification for PyTorch
     misc_rates = pd.DataFrame(misc_rates.items(), columns=['id', 'misc']).sort_values('misc', ascending=False)
@@ -306,7 +306,6 @@ def plot_epoch_performance(n_epochs, labels, out_dir, mname, *metrics):
     eps = list(range(1, n_epochs+1))
     assert len(labels) == len(metrics)
 
-    plt.style.use("ggplot")
     plt.figure()
     for metric, label in zip(metrics, labels):
         plt.plot(eps, metric,  label=label)
@@ -425,7 +424,7 @@ def animate_convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
     logging.info(f"Exported convolutions-by-epoch gif to {out_dir}")
 
 
-def compute_class_activation_maps(model, img, y, out_dir, fname, display=False):
+def compute_class_activation_maps(model, img, y, out_dir, fname, device, display=False):
     """
     Displays and exports class activation maps for the provided image and model.
 
@@ -434,18 +433,19 @@ def compute_class_activation_maps(model, img, y, out_dir, fname, display=False):
     :param y: Class for our img
     :param out_dir: Export directory
     :param fname: Name of our CAM file; should include indication of the sample index & seed (if applicable)
+    :param device: PyTorch device
     :param display: Saves the figure to the output directory
     :return: 2d NumPy CAM, scaled from 0-255
     """
-    torch_img = torch.unsqueeze(torch.Tensor(img), 0)  # reshape from numpy to [1, ...] Tensor
+    torch_img = torch.unsqueeze(torch.Tensor(img), 0).to(device)  # reshape from numpy to [1, ...] Tensor
     pred = torch.squeeze(torch.exp(model(torch_img)[0]))  # Remove from log space
     pred, ind = pred.sort(0, True)  # sort from high->low & obtain indices
-    pred = pred.detach().numpy()
-    ind = ind.numpy()
+    pred = pred.cpu().detach().numpy()
+    ind = ind.cpu().numpy()
 
     # Obtain final dense layer parameters
     _param = list(model.parameters())
-    final_layer = np.squeeze(_param[-2].data.numpy())  # [4, 64]
+    final_layer = np.squeeze(_param[-2].data.cpu().numpy())  # [4, 64]
 
     # Obtain final convolutional filters
     convs = model(torch_img, early_stopping=True)[0].cpu().detach().numpy()
@@ -466,7 +466,7 @@ def compute_class_activation_maps(model, img, y, out_dir, fname, display=False):
     return cam
 
 
-def compute_aggregated_cams(model, data, out_dir, aggr_func, fname, display=False):
+def compute_aggregated_cams(model, data, out_dir, aggr_func, fname, device, display=False):
     """
     Plots class-wise aggregated Class Activation Maps and saves them to the provided output directory.
 
@@ -476,13 +476,14 @@ def compute_aggregated_cams(model, data, out_dir, aggr_func, fname, display=Fals
     :param aggr_func: Function to use for aggregation; assumed to be np.mean, but can be any NP function which accepts
     array and axis arguments
     :param fname: String appended to filename. Ideally just the seed/index.
+    :param device: PyTorch device
     :param display: Saves the figure to the output directory
     :return: Aggregated class CAMs
     """
     cams = {0: [], 1: [], 2: [], 3: []}
     for i, d in enumerate(data):  # CAMs
         x, y = d[0], d[1]
-        cam = compute_class_activation_maps(model, x, y, out_dir, str(i))
+        cam = compute_class_activation_maps(model, x, y, out_dir, str(i), device)
         cams[y].append(cam)
     aggr_cam = [np.squeeze(aggr_func(v, axis=0)) for k, v in cams.items()]  # compute the mean CAMs by class
 
@@ -545,12 +546,11 @@ def plot_training_validation_performance(t, v, out_dir):
     :param v: Iterable validation set performances
     :param out_dir: Output directory
     """
-    plt.style.use("ggplot")
     fig, ax = plt.subplots(figsize=(8., 8.))
 
     # Plot points & reference line
     plt.scatter(x=t, y=v)
-    line = lines.Line2D([0.0, 1.0], [0.0, 1.0], color='red')
+    line = lines.Line2D([0.0, 1.0], [0.0, 1.0], color='grey')
     transform = ax.transAxes
     line.set_transform(transform)
     ax.add_line(line)
@@ -576,7 +576,7 @@ def plot_training_validation_heatmap(t, v, out_dir, t_size, v_size):
     :param t_size: Length of the training set
     :param v_size: Length of the validation set
     """
-    fig, ax = plt.subplots(figsize=(8., 8.), ncols=1)
+    fig, ax = plt.subplots(figsize=(11., 7.), ncols=1)
     t, v = [int(i*t_size) for i in t], [int((1-i)*v_size) for i in v]  # scales %-based accuracy to counts
     t_size, v_size = t_size+1, v_size+1  # To account for 100% and 0% accuracy, we plot with an extra count (0)
     img = np.zeros((v_size, t_size))
@@ -585,7 +585,7 @@ def plot_training_validation_heatmap(t, v, out_dir, t_size, v_size):
 
     # Plot heatmap & colorbar
     p = ax.imshow(img, cmap="inferno")
-    ax.figure.colorbar(p, ax=ax, shrink=0.5)
+    ax.figure.colorbar(p, ax=ax, shrink=0.6667)
 
     # Set plot parameters
     ax.set_xticks(np.arange(0, t_size, t_size/10), labels=[f"{n*10}%" for n in np.arange(0, 10, 1)], size=12)

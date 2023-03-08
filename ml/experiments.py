@@ -1,4 +1,6 @@
 import os
+import shutil
+
 import torch
 import logging
 import pandas as pd
@@ -47,7 +49,7 @@ def classify_baselines(args, X, y, out_dir):
 
         # obtain model results over n seeds
         r, cm, p, dt_top = [], [], [], []  # results, confusion matricies, feature importance, decision tree splits
-        for state in nprand.randint(0, 99999, size=args.num_states):
+        for state in nprand.randint(0, 999999999, size=args.num_states):
             if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
                 state_data = run_pca(state_data, y, state)
             elif args.features_selection == "umap":
@@ -56,7 +58,7 @@ def classify_baselines(args, X, y, out_dir):
             train_d, test_d, train_l, test_l = train_test_split(state_data, y, test_size=0.3, stratify=y)
             baselines.data(train_d, train_l, test_d, test_l)
             result, c, _imp, _split = model(random_state=state,
-                                            verbose=args.verbose,
+                                            verbose=False,  # args.verbose
                                             importance=args.importance,
                                             feature_names=_col_order(args.type),
                                             only_acc=args.only_acc)
@@ -72,38 +74,32 @@ def classify_baselines(args, X, y, out_dir):
         results = results.to_frame().transpose()
         results = results.reindex(sorted(results.columns), axis=1)
         logging.info(msg="\nPerformance Statistics: {mod}\n{res}\n".format(mod=model_name, res=str(results)))
-        save_dir = "{log}{mod}/".format(log=out_dir, mod=model_name)
 
         # save performance results to csv file(s) with any produced plots
         if args.save:
-            if not os.path.exists(save_dir):
-                os.mkdir(save_dir)
-            csv_name = format_name(args, save_dir, ".csv")
-            results.to_csv(csv_name)
+            # Export CSVs to sub-directory
+            results_dir = f"{out_dir}results/"
+            results.to_csv(f"{results_dir}{model.__name__}.csv")
 
-            if args.verbose:  # aggregate confusion matrix & misclassification rate figures & save to output directory
-                plt.plot_samplewise_misclassification_rates(baselines, 22, y, args, save_dir, model_name)
-                plt.plot_confusion_matrix(cm, y, args, save_dir, model_name)
+        if args.verbose:  # aggregate confusion matrix & misclassification rate figures & save to output directory
+            plt.plot_samplewise_misclassification_rates(baselines, 22, y, args, out_dir, model_name)
+            plt.plot_confusion_matrix(cm, y, args, out_dir, model_name)
 
-            # format & save feature importances into a logging subdirectory
-            if args.importance and not args.only_acc and model_name in ["logreg", "dt"]:
-                importance_dir = "{sd}importance/".format(sd=save_dir)
+            if args.importance and not args.only_acc and model_name in ["logreg", "dt"]:  # format feature importances
+                importance_dir = "{sd}importance/".format(sd=out_dir)
                 if not os.path.exists(importance_dir):
                     os.mkdir(importance_dir)
-
                 priority = pd.DataFrame(p, columns=_col_order(args.type))
                 priority = priority.abs()
                 cvs = np.cov(priority, rowvar=False)
                 imp_name = format_name(args, importance_dir, ".npy")
                 np.save(imp_name, cvs)
-
                 priority = priority.mean(axis=0).round(decimals=3).to_frame().transpose()
                 priority = priority.to_frame().transpose()
                 imp_name = format_name(args, importance_dir, ".csv")
-                priority.to_csv(imp_name)  # need to update save dir...
+                priority.to_csv(imp_name)
 
-                # Also save decision tree splits for analysis
-                if model_name == "dt":
+                if model_name == "dt":  # Also save decision tree splits for analysis
                     importance_splits_dir = "{id}splits/".format(id=importance_dir)
                     if not os.path.exists(importance_splits_dir):
                         os.mkdir(importance_splits_dir)
@@ -122,13 +118,16 @@ def classify_ts(args, X, y, out_dir):
     :param out_dir: Sub-directory to save any produced files in
     """
     models = TSBaselines()
-    nprand.seed(0)
-
+    nprand.seed(args.seed)
     for model in models.m[args.model]:
-        r, cm = [], []  # results, confusion matricies, feature importance, decision tree splits
-        for s in nprand.randint(0, 99999, size=20):
+        r, cm = [], []  # results, confusion matricies
+        for i, s in enumerate(nprand.randint(0, 999999999, size=args.num_states)):
+            model_name = f"{i}_{s}"
+            nprand.seed(s)
+            logging.info(f"Beginning {args.model} model {model_name}")
+
             X_copy = X.copy()
-            train_d, test_d, train_l, test_l = train_test_split(X_copy, y, test_size=0.3, stratify=y)
+            train_d, test_d, train_l, test_l = train_test_split(X_copy, y, test_size=args.pyt_data_split[1], stratify=y)
             models.data(train_d, train_l, test_d, test_l)
             result, c = model(random_state=s, verbose=True)
             r.append(result)
@@ -142,8 +141,11 @@ def classify_ts(args, X, y, out_dir):
             results[col + "+-"] = val
         results = results.to_frame().transpose()
         results = results.reindex(sorted(results.columns), axis=1)
-        results.to_csv(f"{args.model}{args.name}.csv")
         logging.info(results)
+
+        # Export results to sub-directory
+        results_dir = f"{out_dir}results/"
+        results.to_csv(f"{results_dir}{model.__name__}.csv")
 
         # display & save confusion matrix
         if args.verbose:
@@ -223,7 +225,7 @@ def classify_dl(args, X, y, out_dir):
                 t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
                 bar.set_description(f"t{t} v{v}")  # Update progress bar
                 if args.verbose:  # track convolutions for animation
-                    conevolution[e] = [np.copy(model.conv1.weight.detach().numpy())]  # First conv.; requires input_d 1
+                    conevolution[e] = [np.copy(model.conv1.weight.cpu().detach().numpy())]  # First conv.; requires input_d 1
         else:  # Load from checkpoint & obtain final performances
             logging.critical(f"Loading model {model_name}...")
             try:
@@ -252,11 +254,12 @@ def classify_dl(args, X, y, out_dir):
                 plt.plot_epoch_performance(E, performance_log.keys(), ep_export_dir, f"{model_name}",
                                            *[i[1] for i in performance_log.items()])
             for i, d in enumerate(data):  # Sample-wise CAMs
-                plt.compute_class_activation_maps(model, d[0], d[1], cam_export_dir, str(i), display=True)
+                plt.compute_class_activation_maps(model, d[0], d[1], cam_export_dir, str(i), device, display=True)
             for cam_metric in [np.mean, np.median, np.var]:  # Aggregated CAMs
                 if cam_metric not in cams:
                     cams[cam_metric] = []
-                cams[cam_metric].append(plt.compute_aggregated_cams(model, data, cam_export_dir, cam_metric, str(seed), display=True))
+                cams[cam_metric].append(plt.compute_aggregated_cams(model, data, cam_export_dir, cam_metric, str(seed),
+                                                                    device, display=True))
             # conv_trend = [v[0] for k, v in conevolution.items()]  # Evolution of convolutional filters
             # plt.animate_convolution_by_epoch(conv_trend, f=5, t=E, out_dir=conv_export_dir, fname=f"_{model_name}",
             #                                  title=f"seed:{seed}")

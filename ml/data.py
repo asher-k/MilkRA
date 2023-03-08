@@ -161,7 +161,7 @@ def format_name(arg, d=None, ext=None):
     :param ext: File extension appended to name
     :return: The final file name
     """
-    fname = "{save_dir}{name}.{model}.{type}.{norm}.{avg}{only}{ext}"
+    fname = "{save_dir}{name}.{model}.{type}.{norm}.{avg}{ext}"
     fname = fname.format(
         save_dir=d,
         name=arg.name,

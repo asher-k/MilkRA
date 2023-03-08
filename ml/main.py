@@ -38,10 +38,6 @@ def define_arguments():
                    help='Overwrite any files present in the current experiment folder')
     a.add_argument('--load', default=False, action=BooleanOptionalAction,
                    help='Loads pretrained PyTorch models from out_dir')
-    a.add_argument('--only_acc', default=False, action=BooleanOptionalAction,
-                   help='Only save direct model outputs')
-    a.add_argument('--importance', default=False, action=BooleanOptionalAction,
-                   help='Log feature importances from valid baseline models')
 
     # Model arguments
     a.add_argument('--experiment', default='classify:baseline', type=str, choices=["classify:baseline", "classify:dl",
@@ -52,6 +48,12 @@ def define_arguments():
                    help='ML baseline to obtain results on; can be \'all\' to sequentially run all baselines.')
     a.add_argument('--num_states', default=1, type=int,
                    help='Number of random states to compute model performances at')
+
+    # Non-TS Baseline arguments
+    a.add_argument('--only_acc', default=False, action=BooleanOptionalAction,
+                   help='Discards all results except for baseline prediction accuracy metrics')
+    a.add_argument('--importance', default=False, action=BooleanOptionalAction,
+                   help='Save feature importance visualizations (when applicable with the selected model)')
 
     # PyTorch Deep Learning arguments
     a.add_argument('--pyt_lr', default=1e-3, type=float,
@@ -119,7 +121,7 @@ if __name__ == '__main__':
     logs_name = f"{out_dir}logs_{args.name}.txt"
 
     if not args.load:  # directory initialization
-        for d in [f"{out_dir}figs/", f"{out_dir}models/"]:
+        for d in [f"{out_dir}figs/", f"{out_dir}models/", f"{out_dir}results/"]:
             if not os.path.exists(d):
                 os.makedirs(d)
             elif args.overwrite:

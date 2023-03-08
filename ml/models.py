@@ -170,7 +170,7 @@ class Baselines:
         if kwargs['verbose']:  # visualization of DT
             fig = plt.figure(figsize=(20, 20))
             plot_tree(dt, filled=True)
-            fig.savefig("../output/figures/dt_{ct}.png".format(ct=state))
+            fig.savefig("../output/dt_{ct}.png".format(ct=state))
         return self.predict_and_results(model=dt, **kwargs)
 
     def knn(self, **kwargs):
@@ -380,6 +380,7 @@ def _seed_decorator(func):
     :return: results of wrapped model
     """
     def execute(*args, **kwargs):
+        execute.__name__ = func.__name__  # Name override for exporting
         state = kwargs["random_state"]
         nprand.seed(state)
         return func(*args, **kwargs)
