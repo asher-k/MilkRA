@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.animation as animation
 
+import models
 from data import format_name
 from functools import partial
 from mpl_toolkits.axes_grid1 import ImageGrid
@@ -66,7 +67,7 @@ def _cam_ups(final_conv, final_dense, top_class, scale=True, size=None):
     return cams
 
 
-def plot_attention_by_class(model, data, n_layers, out_dir):
+def plot_attention_by_class(model, data, n_layers, out_dir, fname):
     """
     Displays a line plot of the aggregated attention values assigned to each subdivision over each class.
 
@@ -74,6 +75,7 @@ def plot_attention_by_class(model, data, n_layers, out_dir):
     :param data: Dataset of droplet samples
     :param n_layers: Int number of attention blocks in the encoder
     :param out_dir: Output directory
+    :param fname: File name appended to output
     """
     attentions_by_class = {0: [], 1: [], 2: [], 3: []}
     for sample in data:
@@ -87,7 +89,7 @@ def plot_attention_by_class(model, data, n_layers, out_dir):
     for attn in attentions_by_class.values():  # flatten attentions into a single iterable
         for block in attn:
             flattened_attn.append(block)
-    logging.info(f"Raw mean attention scores: {flattened_attn}")
+    # logging.info(f"Raw mean attention scores: {flattened_attn}")
 
     y_labels, x_labels = ["DBM", "GTM", "LBM", "LBP+"], [f"Block {i}" for i in range(0, n_layers)]
     fig = plt.figure(figsize=(6., 6.))
@@ -104,7 +106,7 @@ def plot_attention_by_class(model, data, n_layers, out_dir):
         if i >= (n_rows-1) * n_cols:  # X labels if we are on the final row
             ax.set_xlabel(x_labels[i - ((n_rows-1) * n_cols)])
         if i % n_cols == 0:                # Y labels if we are on the first column
-            ax.set_ylabel(y_labels[i // 2])
+            ax.set_ylabel(y_labels[i // n_cols])
 
         for xid, x in enumerate(attn):  # Adds connections between all class pairs
             for yid, y in enumerate(x):
@@ -113,14 +115,14 @@ def plot_attention_by_class(model, data, n_layers, out_dir):
     fig.suptitle("Mean Attention by Class & Block")
     fig.supylabel("Class")
     fig.supxlabel("Attention Block")
-    plt.savefig(f"{out_dir}figs/Aggr_Classwise_Attn.png")
+    plt.savefig(f"{out_dir}Aggr_Classwise_Attn_{fname}.png")
 
 
-def plot_samplewise_misclassification_rates(baselines, n_display, labels, arguments, out_dir, mname):
+def plot_samplewise_misclassification_rates(m, n_display, labels, arguments, out_dir, mname):
     """
-    Displays a horizontal bar chart displaying misclassification rates and classes of samples. TODO: add misc. rates for PyTorch models
+    Displays a horizontal bar chart displaying misclassification rates and classes of samples.
 
-    :param baselines: Trained Baselines instance, with some results stored in preddict
+    :param m: Trained Baselines instance, with some results stored in preddict OR iterable of trained PyTorch models
     :param n_display: Number of samples to display in the plot
     :param labels: Set of data labels
     :param arguments: ArgParser used to build the name of the exported figure
@@ -130,7 +132,11 @@ def plot_samplewise_misclassification_rates(baselines, n_display, labels, argume
     plt.clf()
 
     # First apply lite preprocessing to obtain relevant rates & samples
-    misc_rates = {str(k): round(v[0] / v[1], 3) for k, v in baselines.preddict.items()}
+    misc_rates = {}
+    if type(m) in [models.Baselines, ]:
+        misc_rates = {str(k): round(v[0] / v[1], 3) for k, v in m.preddict.items()}
+    elif type(m[0]) == torch.nn.Module:
+        misc_rates = {}  # TODO: implement sample-wise misclassification for PyTorch
     misc_rates = pd.DataFrame(misc_rates.items(), columns=['id', 'misc']).sort_values('misc', ascending=False)
     misc_rates = misc_rates.loc[:][:n_display]  # often top ~20 perform poorly
     misc_rates.reset_index(drop=True, inplace=True)
@@ -307,7 +313,7 @@ def plot_epoch_performance(n_epochs, labels, out_dir, mname, *metrics):
     plt.xlabel("Epoch #")
     plt.ylabel("Loss/Accuracy")
     plt.legend(loc="lower left")
-    plt.savefig(f"{out_dir}figs/Epochs_{mname}.png")
+    plt.savefig(f"{out_dir}Epochs_{mname}.png")
 
 
 def plot_embedding_visualization(X, y, out_dir, known_misclassified=None, method="PCA or UMAP"):
@@ -339,10 +345,10 @@ def plot_embedding_visualization(X, y, out_dir, known_misclassified=None, method
             ax.annotate(i, (x_p, y_p), color="orangered", weight='bold')
         else:
             ax.annotate(i, (x_p, y_p))
-    plt.savefig(f"{out_dir}figs/{method}_embedding.png")
+    plt.savefig(f"{out_dir}{method}_embedding.png")
 
 
-def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=None):
+def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=None, n_rows=None, n_cols=None):
     """
     Displays convolutional filters of the provided convolutional layers at a provided timestep. This function is
     leveraged in animate_convolution_by_epoch and will not natively produce any files.
@@ -351,18 +357,18 @@ def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, g
     :param convs: Iterable of convolutional filters across multiple timesteps
     :param epochs: Iterable of the range of epochs
     :param title: Title of the figure
-    :param out_dir: Export directory for the file
     :param verbose: Enabling verbosity displays the plot
     :param fig: Figure instance (optional)
     :param grid: iterable instance of axes (optional)
+    :param n_rows: Number of rows in the image grid
+    :param n_cols: Number of columns in the image grid
     """
     t -= 1
     plt.cla()
     weight, to_append = convs[t], epochs[t]
     weight = np.reshape(weight, (weight.shape[0], weight.shape[2], weight.shape[3], weight.shape[1]))
+    assert weight.shape[-1] == 1  # input channels must == 1
 
-    n_rows = int(np.ceil(np.sqrt(weight.shape[0])))  # derive the smallest rectangle which can host all the convolutions
-    n_cols = int(np.ceil(weight.shape[0] / n_rows))
     if fig is None or grid is None:
         fig = plt.figure(figsize=(8., 8.))
         logging.info(f"Figure shape {n_rows}r {n_cols}c")
@@ -396,6 +402,7 @@ def animate_convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
     :param out_dir: Export directory
     :param fname: Name for the exported .gif file. Ideally just the seed
     """
+    shape = data[0].shape
     # Setup writer
     writer = animation.writers['ffmpeg']
     writer = writer(fps=f)
@@ -404,8 +411,8 @@ def animate_convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
 
     # Define constant Figure & axes objects
     fig = plt.figure(figsize=(8., 8.))
-    n_rows = int(np.ceil(np.sqrt(data[0].shape[0])))
-    n_cols = int(np.ceil(data[0].shape[0] / n_rows))
+    n_rows = int(np.ceil(np.sqrt(shape[0])))
+    n_cols = int(np.ceil(shape[0] / n_rows))
     logging.info(f"Figure shape {n_rows}r {n_cols}c")
     grid = ImageGrid(fig, 111, nrows_ncols=(n_rows, n_cols), axes_pad=0.1)
 
@@ -413,7 +420,7 @@ def animate_convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
     a = partial(plot_conv_visualizations, convs=data, epochs=times, fig=fig, grid=grid,
                 title=kwargs["title"] if kwargs["title"] is not None else "", )
     anim = animation.FuncAnimation(fig, a, frames=times, interval=int(1000 / f))
-    anim.save(f"{out_dir}figs/Convs_{fname}.gif")
+    anim.save(f"{out_dir}Convs_{fname}.gif")
     logging.info(f"Exported convolutions-by-epoch gif to {out_dir}")
 
 
@@ -443,7 +450,8 @@ def compute_class_activation_maps(model, img, y, out_dir, fname, display=False):
     convs = model(torch_img, early_stopping=True)[0].cpu().detach().numpy()
 
     # Obtain & visualize CAM(s)
-    cam = _cam_ups(convs, final_layer, [ind[0]], size=[31, 133], scale=False)
+    shape = np.squeeze(img, 0).shape
+    cam = _cam_ups(convs, final_layer, [ind[0]], size=np.flip(shape), scale=False)
     if display:
         for m in cam:  # iterate over all maps in case we decide to display for each potential class
             plt.cla()
@@ -453,7 +461,7 @@ def compute_class_activation_maps(model, img, y, out_dir, fname, display=False):
                 ims = ax.imshow(im, aspect=1, cmap=c, vmin=-1 if c == 'coolwarm' else None,
                                 vmax=1 if c == 'coolwarm' else None)
             fig.suptitle(f"Class Activation Map: True {y} Predicted {ind[0]}")
-            plt.savefig(f"{out_dir}figs/CAM_{fname.zfill(3)}.png")
+            plt.savefig(f"{out_dir}CAM_{fname.zfill(3)}.png")
     return cam
 
 
@@ -466,7 +474,7 @@ def compute_aggregated_cams(model, data, out_dir, aggr_func, fname, display=Fals
     :param out_dir: Output directory
     :param aggr_func: Function to use for aggregation; assumed to be np.mean, but can be any NP function which accepts
     array and axis arguments
-    :param fname: String appended to filename. Ideally just the seed.
+    :param fname: String appended to filename. Ideally just the seed/index.
     :param display: Saves the figure to the output directory
     :return: Aggregated class CAMs
     """
@@ -490,7 +498,7 @@ def compute_aggregated_cams(model, data, out_dir, aggr_func, fname, display=Fals
                            bbox_transform=ax.transAxes, borderpad=0, )  # Color bar
         fig.colorbar(ims, cax=axins, ticks=[vmin, vmax])
         fig.suptitle(f"Class Activation Maps by class {aggr_func.__name__}")
-        out = f"{out_dir}figs/CAM_{fname}_{aggr_func.__name__}.png"
+        out = f"{out_dir}CAM_{fname}_{aggr_func.__name__}.png"
         plt.savefig(out)
         logging.info(f"Exported {aggr_func.__name__} CAM images to {out}")
     return aggr_cam
@@ -509,7 +517,7 @@ def plot_seed_aggregated_cams(cams, out_dir, aggr_func, fname):
     cams = np.squeeze(cams)
     final_cams = [aggr_func(cams[:, i], axis=0) for i in range(0, 4)]
     vmin, vmax = np.min(final_cams), np.max(final_cams)
-    perc = 75  # Percentile to clip at; TODO: 75th may clip too much, consider moving up
+    perc = 90  # Percentile to clip at; 75th percentile can still produce outliers, suggest 90th
     vmax = vmax if vmax-vmin < 10 else np.percentile(final_cams, perc)  # We clip the max if it is sufficiently large
 
     fig = plt.figure(figsize=(8., 8.))

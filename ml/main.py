@@ -1,6 +1,8 @@
 """
 python main.py --type processed --seed 1 --num_states 60 --save --experiment EXP --model MOD --name NAM --verbose
 """
+import shutil
+
 import os
 import logging
 import sys
@@ -32,6 +34,8 @@ def define_arguments():
                    help='Path to logs directory')
     a.add_argument('--save', default=False, action=BooleanOptionalAction,
                    help='Save performance statistics to a CSV in the logging directory; also saves PyTorch models')
+    a.add_argument('--overwrite', default=False, action=BooleanOptionalAction,
+                   help='Overwrite any files present in the current experiment folder')
     a.add_argument('--load', default=False, action=BooleanOptionalAction,
                    help='Loads pretrained PyTorch models from out_dir')
     a.add_argument('--only_acc', default=False, action=BooleanOptionalAction,
@@ -78,7 +82,7 @@ def define_arguments():
                    help='String-formatted ranges representing indicies of steps to use in ML baselines')
     a.add_argument('--features_at', nargs="+", type=int,
                    help='Columns for dimensionality reduction; non-indexed columns are dropped prior to training')
-    a.add_argument('--features_selection', default="none", choices=["none", "pca", "top"], type=str,
+    a.add_argument('--features_selection', default="none", choices=["none", "pca", "umap", "top"], type=str,
                    help='Perform PCA on the raw/processed datasets')
     a.add_argument('--centre_avg', default=False, action=BooleanOptionalAction,
                    help='Average centre 3 observations; this could provide a boost in performance through dim. red.')
@@ -107,6 +111,8 @@ def preconditions(a):
         logging.warning("Saving and Verbosity are both disabled! Full results may not be available.")
     if a.save and a.num_states > 1 and any([t in a.experiment for t in ['dl', 'vit']]):
         logging.warning("Saving is enabled for multiple PyTorch models! All models will save at the cost of disk space")
+    if a.save and a.overwrite:
+        logging.critical(f"OVERWRITING output folder {a.name}")
 
 
 # Delegate mode to correct model, using the provided arguments.
@@ -116,13 +122,18 @@ if __name__ == '__main__':
     out_dir = "{od}experiments/{e}/".format(od=args.out_dir, e=args.name)
     logs_name = f"{out_dir}logs_{args.name}.txt"
 
-    if not args.load:  # directory init
+    if not args.load:  # directory initialization
         for d in [f"{out_dir}figs/", f"{out_dir}models/"]:
             if not os.path.exists(d):
                 os.makedirs(d)
+            elif args.overwrite:
+                shutil.rmtree(d)
+                os.makedirs(d)
             else:
-                raise ValueError(f"Files already exist for experiment {args.name}! Please re-run under a different name.")
-        # logging init
+                raise ValueError(f"Files already exist for experiment {args.name}! "
+                                 f"Please re-run under a different name or enable overwriting via --overwrite.")
+
+        # logging initialization
         fh = logging.FileHandler(logs_name, mode="w")
         fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
         logging.getLogger().addHandler(fh)
