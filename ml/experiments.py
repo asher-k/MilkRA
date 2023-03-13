@@ -1,11 +1,13 @@
 import os
-import shutil
 
 import torch
 import logging
 import pandas as pd
 import numpy as np
 import numpy.random as nprand
+import pyswarms as ps
+from sklearn.metrics import silhouette_score
+
 import plots as plt
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
@@ -41,27 +43,30 @@ def classify_baselines(args, X, y, out_dir):
         else:
             model_name = list(baselines.m.keys())[list(baselines.m.values()).index([model])]
 
-        state_data = X.copy()  # TODO: since this isn't updated during PCA, PCA is doing PCA of previous seeds...
+        X_selected = X.copy()
         if args.features_selection == "top":  # since Percentile is deterministic no need to run @ each seed
             selector = SelectPercentile(score_func=mutual_info_classif, percentile=20)
-            selector.fit(state_data, y)
-            state_data = pd.DataFrame(selector.transform(state_data))
+            selector.fit(X_selected, y)
+            X_selected = pd.DataFrame(selector.transform(X_selected))
 
         # obtain model results over n seeds
         r, cm, p, dt_top = [], [], [], []  # results, confusion matricies, feature importance, decision tree splits
         for state in nprand.randint(0, 999999999, size=args.num_states):
+            nprand.seed(state)
+            state_data = X_selected.copy()
             if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
-                state_data = run_pca(state_data, y, state)
+                state_data, _ = run_pca(state_data, y, state, out_dir=f"{out_dir}figs/", verbose=True)
             elif args.features_selection == "umap":
-                state_data = run_umap(state_data, y, state)
+                state_data = run_umap(state_data, y, state, out_dir=f"{out_dir}figs/", verbose=True)
 
-            train_d, test_d, train_l, test_l = train_test_split(state_data, y, test_size=0.3, stratify=y)
+            train_d, test_d, train_l, test_l = train_test_split(state_data, y, test_size=0.3, stratify=y, random_state=state)
             baselines.data(train_d, train_l, test_d, test_l)
             result, c, _imp, _split = model(random_state=state,
                                             verbose=False,  # args.verbose
                                             importance=args.importance,
                                             feature_names=_col_order(args.type),
-                                            only_acc=args.only_acc)
+                                            only_acc=args.only_acc,
+                                            out_dir=f"{out_dir}figs/")
             for tr, re in zip([r, cm, p, dt_top], [result, c, _imp, _split]):
                 tr.append(re)
 
@@ -83,7 +88,7 @@ def classify_baselines(args, X, y, out_dir):
 
         if args.verbose:  # aggregate confusion matrix & misclassification rate figures & save to output directory
             plt.plot_samplewise_misclassification_rates(baselines, 22, y, args, out_dir, model_name)
-            plt.plot_confusion_matrix(cm, y, args, out_dir, model_name)
+            plt.plot_confusion_matrix(cm, y, out_dir, model_name)
 
             if args.importance and not args.only_acc and model_name in ["logreg", "dt"]:  # format feature importances
                 importance_dir = "{sd}importance/".format(sd=out_dir)
@@ -149,7 +154,7 @@ def classify_ts(args, X, y, out_dir):
 
         # display & save confusion matrix
         if args.verbose:
-            plt.plot_confusion_matrix(cm, y, args, out_dir, mname=args.name)
+            plt.plot_confusion_matrix(cm, y, out_dir, mname=args.name)
 
 
 def clustering(args, X, y, out_dir):
@@ -163,12 +168,70 @@ def clustering(args, X, y, out_dir):
     """
     clusters = Clustering()
     if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
-        X = run_pca(X, y, args.seed)
+        X, _ = run_pca(X, y, args.seed)
 
     clusters.data(X, y)
     model = clusters.m[args.model][0]
     model = model()
     clusters.plot_dendrogram(model, out_dir)
+
+
+def pca(args, X, y, out_dir):
+    """
+    PCA-driven timestep selection tuning.
+
+    :param args: Command-line ArgParser
+    :param X: Droplet data
+    :param y: Droplet classes
+    :param out_dir: Sub-directory to save any produced files in
+    """
+    def pca_reshape(x, f, flatten=True):
+        x_selected = np.array([a[:, f == 1] for a in x])
+        shape = x_selected.shape
+        if flatten:
+            x_selected = x_selected.reshape((shape[0], shape[1] * shape[2]))
+        return x_selected
+
+    def pcac_loss(f):
+        """
+        PCA-Clustering loss function.
+
+        :param f: Iterable of binary features
+        :param X: Droplet samples
+        :param y: Sample Classes
+        :return: Loss term
+        """
+        x_selected = pca_reshape(X, f)
+        x_selected, score = run_pca(x_selected, y, args.seed, out_dir=out_dir)
+        unaccounted_var = 1 - sum(score)  # PCA error
+
+        inverse_silhouette = silhouette_score(x_selected, y)
+        inverse_silhouette = 1 / inverse_silhouette  # == 1 means defined clusers, > 1 means silhouette -> 0 & less def.
+        if args.verbose:
+            logging.info(f"PCA loss: {unaccounted_var}, Silhouette: {inverse_silhouette}")
+        return unaccounted_var + inverse_silhouette
+
+    def batch_loss(fs):
+        losses = [pcac_loss(f) for f in fs]
+        return np.array(losses)
+
+    if not args.load:
+        particles = 1620  # 0.2% of possible solutions
+        settings = {'c1': 1.0, 'c2': 1.0, 'w': 0.9, 'k': 100, 'p': 2}  # cognitive, social, inertia, n neighbours, dist metr
+        optimizer = ps.discrete.BinaryPSO(n_particles=particles, dimensions=900, options=settings)
+        cost, pos = optimizer.optimize(batch_loss, iters=250)
+
+        out_name = f"{args.name}_features.npy"
+        np.save(f"{out_dir}results/{out_name}", pos)
+        logging.info(f"Exported feature array to {out_name}")
+
+        # Display final plots & PCA
+        x_selected = pca_reshape(X, pos, flatten=False)
+        plt.plot_sample_vs_mean(x_selected, y, [0, 15, 40, 55], out_dir)  # show example images
+        x_selected = pca_reshape(X, pos, flatten=True)
+        x_selected, _ = run_pca(x_selected, y, args.seed, out_dir=out_dir, verbose=True)  # show PCA space
+        logging.info(f"Final Inverse Silhouette: {1 / silhouette_score(x_selected, y)}")
+        plt.animate_pso_swarm(optimizer, out_dir)  # show PSO animation (may or may not function...)
 
 
 def classify_dl(args, X, y, out_dir):

@@ -162,6 +162,7 @@ class Baselines:
     def dtree(self, **kwargs):
         """
         Decision Tree Classifier. Verbosity can be enabled in kwargs, which produces a DT visualization for the model.
+        This also requires an 'out_dir' kwarg
         """
         state = kwargs["random_state"]
         dt = DecisionTreeClassifier(max_features=min(4, len(self.train_x.columns)),
@@ -170,7 +171,8 @@ class Baselines:
         if kwargs['verbose']:  # visualization of DT
             fig = plt.figure(figsize=(20, 20))
             plot_tree(dt, filled=True)
-            fig.savefig("../output/dt_{ct}.png".format(ct=state))
+            out_dir = kwargs['out_dir']
+            fig.savefig(f"{out_dir}dt_{state}.png")
         return self.predict_and_results(model=dt, **kwargs)
 
     def knn(self, **kwargs):
@@ -210,7 +212,7 @@ class Baselines:
         """
         preds = model.predict(self.test_x)
         probs = model.predict_proba(self.test_x)
-        res, cm = _results_logging(preds, self.test_y, probs, name=str(type(model)), verbose=kwargs['verbose'])
+        res, cm = _results_logging(preds, self.test_y, probs, name=str(type(model)))
 
         importance, splits = None, None
         if kwargs["importance"]:
@@ -342,11 +344,11 @@ class TSBaselines:
         """
         preds = mod.predict(self.test_x)
         probs = mod.predict_proba(self.test_x)
-        res, cm = _results_logging(preds, self.test_y, probs, name=str(type(mod)), verbose=kwargs['verbose'])
+        res, cm = _results_logging(preds, self.test_y, probs, name=str(type(mod)))
         return res, cm
 
 
-def _results_logging(preds, trues, probs=None, name=None, verbose=False):
+def _results_logging(preds, trues, probs=None, name=None,):
     """
     Logs classifier predictions and provides formatted statistics about performance.
 
@@ -363,8 +365,7 @@ def _results_logging(preds, trues, probs=None, name=None, verbose=False):
     class_stats = met.classification_report(trues, preds, output_dict=True, zero_division=0)
 
     cm = None
-    if verbose:
-        cm = met.confusion_matrix(trues, preds)
+    cm = met.confusion_matrix(trues, preds)
     for var_to_save in ['precision', 'recall']:
         [results.update({"{i}_{var}".format(i=i, var=var_to_save): class_stats[i][var_to_save]}) for i in class_stats if
          type(class_stats[i]) is dict]

@@ -14,6 +14,9 @@ from mpl_toolkits.axes_grid1 import ImageGrid
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from PIL.Image import fromarray
 from sklearn.metrics import ConfusionMatrixDisplay
+from pyswarms.utils.plotters.formatters import Mesher
+from pyswarms.utils.plotters import plot_contour
+from pyswarms.utils.functions import single_obj as fx
 
 plt.style.use("seaborn-pastel")
 
@@ -66,6 +69,18 @@ def _cam_ups(final_conv, final_dense, top_class, scale=True, size=None):
         cam = np.array(fromarray(cam).resize(size))
         cams.append(cam)
     return cams
+
+
+def animate_pso_swarm(opt, out_dir):
+    """
+    Displays an animation of the evolution of a PSO swarm from our PCA experiments.
+
+    :param opt: PSO Optimizer
+    :param out_dir: Output directory
+    """
+    m = Mesher(func=fx.sphere)
+    anim = plot_contour(pos_history=opt.pos_history, mesher=m, mark=(0, 0))
+    anim.save(f'{out_dir}figs/PSO.gif', writer='imagemagick', fps=10)
 
 
 def plot_attention_by_class(model, data, n_layers, out_dir, fname):
@@ -165,13 +180,12 @@ def plot_samplewise_misclassification_rates(m, n_display, labels, arguments, out
     plt.savefig(fig_name)
 
 
-def plot_confusion_matrix(cm, labels, args, out_dir, mname):
+def plot_confusion_matrix(cm, labels, out_dir, mname):
     """
     Plots a confusion matrix aggregated over all experiments of a single model
 
     :param cm: Pre-computed 2d confusion matrix
     :param labels: Iterable of string labels of data
-    :param args: ArgParser object; used to extract experiment details for file name
     :param out_dir: Export directory for the file
     :param mname: Model name displayed in the figure title
     """
@@ -227,7 +241,7 @@ def plot_mean_vs_mean(X, y, out_dir, agg_type=None):
     plt.savefig(f"{out_dir}figs/Aggr_Mean_Class_Deviations.png")
 
 
-def plot_sample_vs_mean(X, y, indices, out_dir, plot_type="one"):
+def plot_sample_vs_mean(X, y, indices, out_dir, plot_type="one", datatype="processed"):
     """
     Displays heatmaps identifying differences between the "mean" image of a class and provided samples. Provides the
     option to compare a single sample between its labelled class and all classes.
@@ -239,7 +253,9 @@ def plot_sample_vs_mean(X, y, indices, out_dir, plot_type="one"):
     :param plot_type: Plot comparison type; "one" visualizes only the relevant class, while "all" compares each
     sample against each class
     """
-    samples = X[indices, :]
+    plt.clf()
+    reshape_size = (X.shape[2], X.shape[1])
+    samples = np.take(X, indices, axis=0)
     samples_y = y[indices]
     X = np.delete(X, indices, 0)
     y = np.delete(y, indices, 0)
@@ -250,9 +266,9 @@ def plot_sample_vs_mean(X, y, indices, out_dir, plot_type="one"):
         for s, s_y in zip(samples, samples_y):  # compute difference between mean image & sample
             s = np.reshape(s, avg[s_y].shape)
             diff = avg[s_y] - s
-            finals.append(np.reshape(avg[s_y], (133, 31)))
-            finals.append(np.reshape(s, (133, 31)))
-            finals.append(np.reshape(diff, (133, 31)))
+            finals.append(np.reshape(avg[s_y], reshape_size))
+            finals.append(np.reshape(s, reshape_size))
+            finals.append(np.reshape(diff, reshape_size))
         fig = plt.figure(figsize=(8., 8.))
         grid = ImageGrid(fig, 111, nrows_ncols=(len(indices), 3), axes_pad=0.1)
         x_labels = ["Mean", "Sample", "Divergence"]
@@ -263,11 +279,11 @@ def plot_sample_vs_mean(X, y, indices, out_dir, plot_type="one"):
             ims = ax.imshow(i[1], aspect=.12, vmin=-1, vmax=1, cmap='coolwarm')
     elif plot_type == "all":
         for s, s_y in zip(samples, samples_y):  # compute difference between mean image & sample
-            finals.append(np.reshape(s, (133, 31)))
+            finals.append(np.reshape(s, reshape_size))
             for k, v in avg.items():
                 s = np.reshape(s, avg[k].shape)
                 diff = avg[k] - s
-                finals.append(np.reshape(diff, (133, 31)))
+                finals.append(np.reshape(diff, reshape_size))
         fig = plt.figure(figsize=(8., 8.))
         grid = ImageGrid(fig, 111, nrows_ncols=(len(indices), 5), axes_pad=0.1)
         x_labels = ["Sample", "DBM", "GTM", "LBM", "LBP+"]
@@ -327,6 +343,7 @@ def plot_embedding_visualization(X, y, out_dir, known_misclassified=None, method
     :param known_misclassified: Iterable of droplet indices; labels for these droplets are highlighted in red
     :param method: str Dimensionality Reduction Technique
     """
+    plt.clf()
     if type(X) is pd.DataFrame:
         X = X.to_numpy()
     # known_misclassified = [6, 9, 25, 32, 44, 61]  # Example; these indices are indeed outliers!
@@ -345,7 +362,7 @@ def plot_embedding_visualization(X, y, out_dir, known_misclassified=None, method
             ax.annotate(i, (x_p, y_p), color="orangered", weight='bold')
         else:
             ax.annotate(i, (x_p, y_p))
-    plt.savefig(f"{out_dir}{method}_embedding.png")
+    plt.savefig(f"{out_dir}figs/{method}_embedding.png")
 
 
 def plot_conv_visualizations(t, convs, epochs, title, verbose=False, fig=None, grid=None, n_rows=None, n_cols=None):

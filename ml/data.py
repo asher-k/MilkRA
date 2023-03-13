@@ -114,40 +114,45 @@ class SubdivTransform(object):
         return sample
 
 
-def run_pca(X, y, seed, num_components=2, verbose=False):
+def run_pca(X, y, seed, out_dir, num_components=2, verbose=False):
     """
     Performs PCA on the provided data and labels and displays a plot of the transformed points.
 
     :param X: Droplet data to transform
     :param y: Droplet class labels
     :param seed: For deterministic results
+    :param out_dir: Output directory for embedding visualization
     :param num_components: Number of principle components to consider; anything 10 > x > 2 performs well, with 5 being +
     :param verbose: Enables the display of a plot of the embedding (requires n_components = 2)
+
+    :return: Transformed X data, auxiliary verbosity output
     """
     standardizer = sklp.StandardScaler().fit(X)
     dstd = standardizer.transform(X)
     pca = PCA(random_state=seed, n_components=num_components)  # >0.9 @ 2 PCs
     X = pd.DataFrame(pca.fit_transform(dstd, y))
-    logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
     if verbose:
-        plots.plot_embedding_visualization(X, y, method="PCA")
-    return X
+        logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
+        plots.plot_embedding_visualization(X, y, out_dir, method="PCA")
+    return X, pca.explained_variance_ratio_
 
 
-def run_umap(X, y, seed, num_components=2, verbose=False):
+def run_umap(X, y, seed, out_dir, num_components=2, verbose=False):
     """
     Performs UMAP dimensionality reduction and displays a plot of the transformed points.
 
     :param X: Droplet data to transform
     :param y: Droplet class labels
     :param seed: For deterministic results
+    :param out_dir: Output directory for embedding visualization
     :param num_components: Number of principle components to consider; anything 10 > x > 2 performs well, with 5 being +
     :param verbose: Enables the display of a plot of the embedding (requires n_components = 2)
+    :return: Transformed X data
     """
     umapper = umap.UMAP(n_components=num_components, random_state=seed)
     X_mapped = umapper.fit_transform(X)
     if verbose:
-        plots.plot_embedding_visualization(X_mapped, y, method="UMAP")
+        plots.plot_embedding_visualization(X_mapped, y, out_dir, method="UMAP")
     return X_mapped
 
 

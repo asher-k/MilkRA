@@ -42,7 +42,7 @@ def define_arguments():
     # Model arguments
     a.add_argument('--experiment', default='classify:baseline', type=str, choices=["classify:baseline", "classify:dl",
                                                                                    "classify:ts", "classify:vit",
-                                                                                   "cluster"],
+                                                                                   "cluster", "pca"],
                    help='Experiment to perform; assumes the model chosen is relevant for it')
     a.add_argument('--model', default='logreg', type=str,
                    help='ML baseline to obtain results on; can be \'all\' to sequentially run all baselines.')
@@ -155,7 +155,7 @@ if __name__ == '__main__':
                         ranges=args.load_ranges,
                         features=args.features_at,
                         normalize=args.normalize,
-                        ts=any([True if d in args.experiment else False for d in ["ts", "dl", "vit"]])  # in-line check
+                        ts=any([True if d in args.experiment else False for d in ["ts", "dl", "vit", "pca"]])  # is TS?
                         )
 
     # delegate to experiment script
@@ -166,6 +166,8 @@ if __name__ == '__main__':
         exp.classify_ts(args, data, labels, out_dir)
     elif args.experiment == "cluster":
         exp.clustering(args, data, labels, out_dir)
+    elif args.experiment == "pca":
+        exp.pca(args, data, labels, out_dir)
     elif args.experiment == "classify:dl":
         exp.classify_dl(args, data, labels, out_dir)
     elif args.experiment == "classify:vit":
