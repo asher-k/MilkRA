@@ -47,13 +47,25 @@ def define_arguments():
     a.add_argument('--model', default='logreg', type=str,
                    help='ML baseline to obtain results on; can be \'all\' to sequentially run all baselines.')
     a.add_argument('--num_states', default=1, type=int,
-                   help='Number of random states to compute model performances at')
+                   help='Number of random states to compute model performances across')
 
     # Non-TS Baseline arguments
     a.add_argument('--only_acc', default=False, action=BooleanOptionalAction,
-                   help='Discards all results except for baseline prediction accuracy metrics')
+                   help='Disables the export of most figures except for ones concerned with accuracy/misclassification')
     a.add_argument('--importance', default=False, action=BooleanOptionalAction,
-                   help='Save feature importance visualizations (when applicable with the selected model)')
+                   help='Export feature importance visualizations (when applicable with the selected model)')
+
+    # PSO-PCA experiment arguments
+    a.add_argument('--pso_prop', default=500, type=int,
+                   help='Proportion of particles initialized compared to the possible number; the denominator of '
+                        '(possible_points **2) / pso_prop')
+    a.add_argument('--pso_initsize', default=100, type=int,
+                   help='(approx.) Number of features to randomly initialize in a particle.')
+    a.add_argument('--pso_initscheme', default='stochastic', type=str, choices=["stochastic", "deterministic"],
+                   help='If stochastic, particles are initialized by probability, leading to variance between the number'
+                        'of chosen timesteps. If deterministic, all particles will have pso_initsize timesteps intially.')
+    a.add_argument('--pso_iters', default=50, type=int,
+                   help='Number of training iterations to perform')
 
     # PyTorch Deep Learning arguments
     a.add_argument('--pyt_lr', default=1e-3, type=float,
@@ -83,7 +95,7 @@ def define_arguments():
     a.add_argument('--features_at', nargs="+", type=int,
                    help='Columns for dimensionality reduction; non-indexed columns are dropped prior to training')
     a.add_argument('--features_selection', default="none", choices=["none", "pca", "umap", "top"], type=str,
-                   help='Perform PCA on the raw/processed datasets')
+                   help='Perform PCA on the raw/processed dataset')
     a.add_argument('--centre_avg', default=False, action=BooleanOptionalAction,
                    help='Average centre 3 observations; this could provide a boost in performance through dim. red.')
     a.add_argument('--normalize', default="max", choices=["max", "const", "none"], type=str,
@@ -167,7 +179,7 @@ if __name__ == '__main__':
     elif args.experiment == "cluster":
         exp.clustering(args, data, labels, out_dir)
     elif args.experiment == "pca":
-        exp.pca(args, data, labels, out_dir)
+        exp.pso(args, data, labels, out_dir)
     elif args.experiment == "classify:dl":
         exp.classify_dl(args, data, labels, out_dir)
     elif args.experiment == "classify:vit":

@@ -59,8 +59,9 @@ There are several avenues worth exploring in future studies, as well as several 
 + [x] Improving script exporting & logging clarities and directories.
 + [ ] Expanding all scripts for more than 4-classes.
 + [ ] Investigating angle measurement script and attempting to integrate it with our preprocessing.
-+ [ ] Investigate the necessity of the commad-line arguments only_acc and importance
++ [x] Investigate the necessity of the command-line arguments only_acc and importance.
 
 Further research can involve:
 + Producing Self-attention Attribution visualizations per [Hao et al](https://arxiv.org/abs/2004.11207)
 + Improving stability of our Transformers by applying Admin initialization scheme per [Liu et al](https://arxiv.org/abs/2004.08249)
++ Extending the analysis into univariate time series classification using height ratios.

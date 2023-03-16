@@ -176,9 +176,9 @@ def clustering(args, X, y, out_dir):
     clusters.plot_dendrogram(model, out_dir)
 
 
-def pca(args, X, y, out_dir):
+def pso(args, X, y, out_dir):
     """
-    PCA-driven timestep selection tuning.
+    PSO-driven timestep selection tuning via PCA.
 
     :param args: Command-line ArgParser
     :param X: Droplet data
@@ -197,8 +197,6 @@ def pca(args, X, y, out_dir):
         PCA-Clustering loss function.
 
         :param f: Iterable of binary features
-        :param X: Droplet samples
-        :param y: Sample Classes
         :return: Loss term
         """
         x_selected = pca_reshape(X, f)
@@ -216,10 +214,24 @@ def pca(args, X, y, out_dir):
         return np.array(losses)
 
     if not args.load:
-        particles = 1620  # 0.2% of possible solutions
-        settings = {'c1': 1.0, 'c2': 1.0, 'w': 0.9, 'k': 100, 'p': 2}  # cognitive, social, inertia, n neighbours, dist metr
-        optimizer = ps.discrete.BinaryPSO(n_particles=particles, dimensions=900, options=settings)
-        cost, pos = optimizer.optimize(batch_loss, iters=250)
+        n_particles, n_dims = X.shape[2]**2//args.pso_prop, X.shape[2]
+        assert args.pso_initsize < n_dims
+        init_ps = None
+        if args.pso_initscheme == 'deterministic':
+            init_ps = np.zeros(shape=(n_particles, n_dims))
+            for particle in init_ps:
+                inds = nprand.choice(list(range(0, n_dims-1)), size=args.pso_initsize)
+                particle[inds] = 1
+        else:
+            init_ps = nprand.choice([0,1], size=(n_particles, n_dims),
+                                     p=[1.-(args.pso_initsize/n_dims), args.pso_initsize/n_dims])
+            for particle in init_ps:  # verify we never have an "empty" particle
+                if not any(particle):
+                    particle[nprand.choice(list(range(0, n_dims)))] = 1
+
+        settings = {'c1': 2.5, 'c2': 0.5, 'w': 0.2, 'k': 20, 'p': 2}  # cognitive, social, inertia, n neighbours, distance metric
+        optimizer = ps.discrete.BinaryPSO(n_particles=n_particles, dimensions=n_dims, options=settings, init_pos=init_ps)
+        cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
 
         out_name = f"{args.name}_features.npy"
         np.save(f"{out_dir}results/{out_name}", pos)
