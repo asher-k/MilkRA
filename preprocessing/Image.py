@@ -15,6 +15,9 @@ CONSTS = Constants()
 
 
 class Droplet:
+    """
+    A Droplet is composed of various measurements computed from an original image.
+    """
     def __init__(self, image, height_mode, refl=None):
         self.rfl = refl
         self.hgts = []
@@ -31,6 +34,7 @@ class Droplet:
         Performs calculations on the droplet to obtain quantitative features.
 
         :param complete: when true, heights for each column within the image are pre-computed; computationally expensive
+        :return: self
         """
         self.rfl = self._reflection() if self.rfl is None else self.rfl
         _ = self._bounds(self.rfl)
@@ -48,7 +52,7 @@ class Droplet:
 
     def summary(self):
         """
-        Prepares a formatted string of the current values of the droplet.
+        Prints a formatted string of the current values of the droplet.
         """
         print("Droplet Values: \nReflection Line\t{}".format(self.rfl),
               "\nWidth\t\t{}".format(self.wid),
@@ -126,7 +130,7 @@ class Droplet:
     def height_average(self, column, radius=5):
         """
         Obtains the mean height from the heights of columns according to a radius, supporting both in-line and
-        pre-computed height computations
+        pre-computed height computations.
 
         :param column: column to obtain height at
         :param radius: radius around column to average height across

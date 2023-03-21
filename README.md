@@ -51,8 +51,8 @@ If you're looking for a visualization function, it's probably in `ml/plot.py` an
 
 ## Moving Forward
 There are several avenues worth exploring in future studies, as well as several current duties which should be finished prior to the concolusion of the contract. These include, though are not limited to:
-+ [ ] Refactoring and documenting older code, specifically in `visuals/` and `preprocessing/`. 
-+ [ ] Improving stability of scripts by addressing active issues.
++ [x] Refactoring and documenting older code, specifically in `visuals/` and `preprocessing/`. 
++ [x] Improving stability of scripts by addressing active issues.
 + [x] Composing a short (<5 page) document providing instructions and commentary on running ML scripts.
 + [ ] Developing a clean format for figures and re-running experiments to obtain them.
 + [x] Implementing a method for batched model loading in experiments.

@@ -87,7 +87,7 @@ def define_arguments():
 
 def load_model_expr(path, sort=True):
     """
-    Loads experiment results from a provided directory
+    Loads experiment results from a provided directory.
 
     :param path: path to experiment directory
     :param sort: sort filenames to ensure correct ordering
@@ -103,10 +103,10 @@ def load_model_expr(path, sort=True):
 
 def load_model_expr_importances(path, processed=False):
     """
-    Loads feature importance results from a provided directory
+    Loads feature importance results from a provided directory.
 
     :param path: path to experiment directory
-    :param processed: when "processed" columns are duplicated to maintain symmetry when visualized
+    :param processed: if True columns are duplicated to maintain symmetry when visualized
     :return:
     """
     files = _load_and_sort(path, ".csv")
@@ -120,9 +120,9 @@ def load_model_expr_importances(path, processed=False):
 
 def load_dt_splits(path):
     """
-    Loads split information from logged decison tree performances
+    Loads split information from logged decison tree performances.
 
-    :param path:
+    :param path: Path to decision tree performances
     :return:
     """
     files = _load_and_sort(path, ".csv")
@@ -139,9 +139,9 @@ def _load_droplet_example_shadow():
     """
     Loads an example droplet evaporation sequence as a shadow for feature importance analysis
 
-    :return:
+    :return: Iterable representing the shadow of the droplet.
     """
-    load_dir = "../data/processed/DBM 1000mA Repeats/221121AP/221121AP_raw.csv"
+    load_dir = "../data/processed/DBM 1000mA Repeats/221121AP/221121AP_raw.csv"  # Hard-coded example; needs to be tuned
     shadow_data = pd.read_csv(load_dir)
     shadow_data = shadow_data.iloc[:, 4:]
     shadow_data = shadow_data[_col_order("raw")]
@@ -152,7 +152,9 @@ def _time_steps(path, timeseries=True):
     """
     Infers observed timesteps (and experiments) from observed files.
 
-    :return:
+    :param path: Path to observed timesteps.
+    :param timeseries: Determines load order.
+    :return: Iterable of observed timesteps
     """
     files = os.listdir(path)
     files = [f for f in files if ".txt" in f]
@@ -163,7 +165,9 @@ def _time_steps(path, timeseries=True):
 
 def f1(data, pre, rec):
     """
-    F1 score from precision & recall metrics
+    F1 score from precision & recall metrics.
+
+    :return: F1 score.
     """
     return 2 * ((data[pre]*data[rec])/(data[pre]+data[rec]))
 
@@ -172,7 +176,9 @@ def metric_timeplot(mod, names, metric):
     """
     Plots the metric of the provided model in a line plot
 
-    :return:
+    :param mod: Model names
+    :param names: Name representing information about the model.
+    :param metric: Metric to plot.
     """
     axis = plt.gca()
     axis.set_xlim([0, 900])
@@ -188,7 +194,9 @@ def metric_lineplot(mod, names, metric):
     """
     Plots the metric of the provided model in a non-timeseries lineplot, where each column corresponds to an experiment
 
-    :return:
+    :param mod: Model names
+    :param names: Name representing information about the model.
+    :param metric: Metric to plot.
     """
     axis = plt.gca()
     axis.set_xlim([0, len(timesteps)-1])
@@ -205,9 +213,7 @@ def metric_lineplot(mod, names, metric):
 
 def metric_grouped_pointplot(mod, names, metric):
     """
-    Produces several figures of accuracies & associated errors, grouped by model rather than experiment
-
-    :return:
+    Produces several figures of accuracies & associated errors, grouped by model rather than experiment.
     """
     axis = plt.gca()
     sns.set(font_scale=1.2)
@@ -231,7 +237,7 @@ def metric_grouped_pointplot(mod, names, metric):
 
 def importance_plot(t, data, ref_data, ref_norm, axis):
     """
-    Plots feature importance of the provided model at the provided timestep, with a shadow of an example droplet behind
+    Plots feature importance of the provided model at the provided timestep, with a shadow of an example droplet behind.
 
     :return:
     """
@@ -255,13 +261,12 @@ def importance_plot(t, data, ref_data, ref_norm, axis):
 
 def covar_heatmap(t, mat, mod, r):
     """
-    Produces a heatmap of calculated feature covariances at a provided timestep
+    Produces a heatmap of calculated feature covariances at a provided timestep.
 
     :param t: indexed timestep to observe covariance at
     :param mat: iterable of covariance matrices
     :param mod: model name (for use in title)
     :param r: bounds of pixel values in the heatmap
-    :return:
     """
     assert len(r) == 2
     plt.clf()
@@ -273,11 +278,10 @@ def covar_heatmap(t, mat, mod, r):
 
 def dt_split_bar(t, d):
     """
-    Produces a bar chart of counts of features chosen as the first split point of a Decision Tree
+    Produces a bar chart of counts of features chosen as the first split point of a Decision Tree.
 
     :param t: indexed timestep to observe bins at
     :param d: bin count data
-    :return:
     """
     plt.clf()
     plt.ylim((0, 150))
@@ -291,9 +295,7 @@ def dt_split_bar(t, d):
 
 def write_to_anim(figure, a, f, t, out):
     """
-    Defines writer and exports sequence of figures to a gif in the provided directory
-
-    :return:
+    Defines writer and exports sequence of figures to a gif in the provided directory.
     """
     # Export importance trends to a gif
     writer = animation.writers['ffmpeg']

@@ -3,12 +3,17 @@ import numpy as np
 
 
 class PointPair:
+    """
+    A PointPair represents two linked points on either side of a droplet image which occur at the same percentile away
+    from the centre.
+    """
     def __init__(self, rname, lname, rind, lind):
         self.r_name = rname
-        self.l_name = lname
         self.r_index = rind
-        self.l_index = lind
         self.r_values = []
+
+        self.l_name = lname
+        self.l_index = lind
         self.l_values = []
 
     def pair_mean(self):

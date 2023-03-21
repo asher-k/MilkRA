@@ -6,7 +6,9 @@ from progress.bar import IncrementalBar
 
 def run(datapath, csv_exptpath, img_exptpath, annotate, height_method):
     """
-    Main script (processes multiple folders of images to generate CSV & (potentially) annotated files)
+    Main script (processes multiple folders of images to generate CSVs & (potentially) annotated files).
+
+    WARNING: THIS SCRIPT IS DEPRECATED AND HAS NOT SEEN MUCH USE. RE-WRITE IS REQUIRED.
     """
     # Define correct height methodology
     if height_method == "top":

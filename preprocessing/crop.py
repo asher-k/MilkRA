@@ -10,7 +10,10 @@ BW_CROP = 230
 
 def _find_crop(img):
     """
-    Finds the crop point of an image (where the black value along one side rises above a threshold0
+    Finds the crop point of an image (where the black value along one side rises above a threshold).
+
+    :param img: Image to crop.
+    :return: The vertical/horizontal crop points.
     """
     drop = Droplet(img, "top")
     img = drop.img
@@ -30,7 +33,12 @@ def _find_crop(img):
 
 def _crop_at(img, row, col):
     """
-    Crops the image at a given row/column pair
+    Crops the image at a given row/column pair.
+
+    :param img: Image to crop
+    :param row: Row index to crop at
+    :param col: Column index to crop at
+    :return: Cropped image
     """
     img = img[0:row]
     return np.array([i[col:] for i in img])
@@ -38,7 +46,12 @@ def _crop_at(img, row, col):
 
 def crop_all(datapath, dataset, single=True, crop_dir=None):
     """
-    Crops and exports every image of the defined imageset
+    Crops and exports every image of the defined imageset.
+
+    :param datapath: Path to the existing dataset.
+    :param dataset: Name of the dataset (used to check for existing crops)
+    :param single: If Single only dataset will be cropped; otherwise all datasets are cropped.
+    :param crop_dir: Directory to save cropped images in.
     """
     if not os.path.exists(crop_dir):  # make directory if it does not exist
         os.makedirs(crop_dir)

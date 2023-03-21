@@ -10,8 +10,11 @@ FEATURES = ["file", "reflection_row", "dl_reflection_width", "dl_height_midpoint
 
 def annotate_images(imgs, fpath, fnames, *data):
     """
-    Draws annotations on images at the reference line and maximum height of the droplet
-    :return:
+    Draws annotations on images at the reference line and maximum height of the droplet.
+    :param imgs: Iterable of droplet images
+    :param fpath: Export file path
+    :param fnames: Exported file names.
+    :param data: Droplet arguments; used to define metric that are included in annotated figures.
     """
     _ = [*data]
     _ = _.pop()
@@ -58,7 +61,10 @@ def to_csv(titles, fpath, fname, *data, point_mean=False):
     """
     Exports the calculated features of droplet image data to a CSV format.
 
-    :return:
+    :param titles: Titles of columns in exported CSVs.
+    :param fpath: Export file path
+    :param fnames: Exported file names.
+    :param data: Droplet arguments; exported to the appropriate CSV.
     """
     data = [*data]
     feats = data[0: 2]
@@ -77,11 +83,10 @@ def to_csv(titles, fpath, fname, *data, point_mean=False):
 
 def update_directories(csvpath, imgpath):
     """
-    Creates export directories if they do not exist
+    Creates export directories if they do not exist.
 
     :param csvpath: export path of .csv files
     :param imgpath: export path of annotated images
-    :return:
     """
     if not os.path.exists(csvpath):
         os.makedirs(csvpath)
@@ -91,13 +96,13 @@ def update_directories(csvpath, imgpath):
 
 def construct_pairs(droplet_width, desired_observations, midpoint, padded=True):
     """
-    Defines and updates all pair objects
+    Defines and updates all pair objects.
 
     :param droplet_width: Width of the droplet (in pixels)
     :param desired_observations: Number of heights to draw in the image (/2 for number of pairs)
     :param midpoint: integer midpoint of the droplet
     :param padded: True if greater space should be given to edge values; also True if edge values are recorded.
-    :return:
+    :return: Constructed pairs
     """
     assert desired_observations % 2 == 0
 
@@ -126,7 +131,7 @@ def construct_pairs(droplet_width, desired_observations, midpoint, padded=True):
 
 def export_annotations(img_exptpath, dataset, images, files, _refl, droplets, pairs):
     """
-    Exports annotated images for manual check
+    Exports annotated images for manual validation of preprocessing performance.
     """
     if not os.path.exists(img_exptpath + "/" + dataset):
         os.makedirs(img_exptpath + "/" + dataset)
@@ -145,7 +150,7 @@ def export_annotations(img_exptpath, dataset, images, files, _refl, droplets, pa
 
 def run(datapath, dataset, csv_exptpath, img_exptpath, annotate, height_method, **kwargs):
     """
-    Main script (processes a single folder of images to generate CSV & (potentially) annotated files)
+    Main script (processes a single folder of images to generate CSV files & (potentially) annotated images)
     """
     # Establish path environment
     combined_path = datapath + "/" + dataset
