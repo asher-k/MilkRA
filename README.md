@@ -53,12 +53,13 @@ If you're looking for a visualization function, it's probably in `ml/plot.py` an
 There are several avenues worth exploring in future studies, as well as several current duties which should be finished prior to the concolusion of the contract. These include, though are not limited to:
 + [ ] Refactoring and documenting older code, specifically in `visuals/` and `preprocessing/`. 
 + [ ] Improving stability of scripts by addressing active issues.
-+ [ ] Composing a short (<5 page) document providing instructions and commentary on running ML scripts.
++ [x] Composing a short (<5 page) document providing instructions and commentary on running ML scripts.
 + [ ] Developing a clean format for figures and re-running experiments to obtain them.
 + [x] Implementing a method for batched model loading in experiments.
 + [x] Improving script exporting & logging clarities and directories.
 + [ ] Expanding all scripts for more than 4-classes.
 + [ ] Investigating angle measurement script and attempting to integrate it with our preprocessing.
++ [ ] Update functions in plots with asserts & clean-up any remaining TODOs.
 + [x] Investigate the necessity of the command-line arguments only_acc and importance.
 
 Further research can involve:
