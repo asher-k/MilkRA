@@ -80,6 +80,7 @@ def classify_baselines(args, X, y, out_dir):
         results = results.reindex(sorted(results.columns), axis=1)
         logging.info(msg="\nPerformance Statistics: {mod}\n{res}\n".format(mod=model_name, res=str(results)))
 
+        plt.plot_samplewise_misclassification_rates(baselines, 20, y, arguments=None, out_dir=f"{out_dir}", mname="mlp_baseline")
         # save performance results to csv file(s) with any produced plots
         if args.save:
             # Export CSVs to sub-directory
@@ -355,8 +356,8 @@ def classify_dl(args, X, y, out_dir):
             torch.save(model.state_dict(), f"{out_dir}models/model{index}_{seed}.pt")
 
     # Trans-seed plotting
-    misc_rates = {k: sum(v)/len(v) if len(v) > 0 else 0. for k, v in misc_rates.items()}  # Mean misclassification rates
-    plt.plot_samplewise_misclassification_rates(misc_rates, 20, y_data, arguments=None, out_dir=f"{out_dir}/figs/", mname="full_conv")
+    misc_rates = {str(k): sum(v)/len(v) if len(v) > 0 else 0. for k, v in misc_rates.items()}  # Mean misclassification rates
+    plt.plot_samplewise_misclassification_rates(misc_rates, 20, y_data, arguments=None, out_dir=f"{out_dir}", mname="full_conv")
 
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
     if args.verbose:
