@@ -264,9 +264,11 @@ def classify_dl(args, X, y, out_dir):
     # Reformat data & define DataSet
     X_data = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
     y_data = np.array(y)
-    data = DropletDataset(X_data, y_data, transforms=[
+    data = DropletDataset(X_data, y_data, list(range(0, len(y_data))), transforms=[
         ToTensor(), FloatTransform(),
     ])
+    misc_rates = {i: [] for _x, _y, i in data}  # Misclassification rates of test samples
+
     tr_size, val_size = int(data.__len__() * spl[0]) + 1, int(data.__len__() * spl[1])
 
     for index, seed in enumerate(nprand.randint(0, 999999999, size=args.num_states)):
@@ -317,6 +319,17 @@ def classify_dl(args, X, y, out_dir):
         performances["val_acc"].append(round(performance_log["val_acc"][-1], 3))
         models.append(model)
 
+        # Update Misclassification Rates
+        with torch.no_grad():
+            model.eval()
+            for sample in testLoader:
+                x, y, i = sample
+                x, y = x.to(device), y.to(device)
+                pred, _d = model(x)
+                pred = pred.argmax(1).cpu().detach().numpy()
+                for pc, ac, n in zip(pred, y, i):
+                    misc_rates[n.item()].append(0 if pc == ac else 1)
+
         # Verbosity-enabled plotting
         if args.verbose:
             # Initialize export sub-directories
@@ -342,6 +355,9 @@ def classify_dl(args, X, y, out_dir):
             torch.save(model.state_dict(), f"{out_dir}models/model{index}_{seed}.pt")
 
     # Trans-seed plotting
+    misc_rates = {k: sum(v)/len(v) if len(v) > 0 else 0. for k, v in misc_rates.items()}  # Mean misclassification rates
+    plt.plot_samplewise_misclassification_rates(misc_rates, 20, y_data, arguments=None, out_dir=f"{out_dir}/figs/", mname="full_conv")
+
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
     if args.verbose:
         plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"], out_dir)
@@ -462,7 +478,7 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
     train_loss, train_acc = 0, 0
 
     # loop over the training set
-    for (x, y) in loader:
+    for (x, y, _) in loader:
         (x, y) = (x.to(device), y.to(device))
 
         pred, _extra = model(x)
@@ -502,7 +518,7 @@ def _dl_validate(model, loader, device, loss_fn, log, verbose=False, log_type="v
     val_loss, val_acc = 0, 0
     with torch.no_grad():
         model.eval()
-        for x, y in loader:
+        for x, y, _ in loader:
             x, y = (x.to(device), y.to(device))
             pred, _extra = model(x)
             val_loss += loss_fn(pred, y)

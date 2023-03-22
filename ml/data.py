@@ -16,9 +16,10 @@ class DropletDataset(Dataset):
     Structured dataset for Torch models. Enables retrieval of droplet labels and droplet time-series data and allows
     for modification through the use of transformations.
     """
-    def __init__(self, X, y, transforms=None):
+    def __init__(self, X, y, id, transforms=None):
         self.droplets_frame = X
         self.droplets_label = y
+        self.droplets_id = id
         self.transforms = transforms
 
     def __len__(self):
@@ -45,7 +46,9 @@ class DropletDataset(Dataset):
 
         label = self.droplets_label[idx]
         label = _label_to_index(label)
-        return sample, label
+
+        id = self.droplets_id[idx]
+        return sample, label, id
 
     def labels(self):
         """

@@ -141,7 +141,7 @@ def plot_samplewise_misclassification_rates(m, n_display, labels, arguments, out
     :param m: Trained Baselines instance, with some results stored in preddict OR iterable of trained PyTorch models
     :param n_display: Number of samples to display in the plot
     :param labels: Set of data labels
-    :param arguments: ArgParser used to build the name of the exported figure
+    :param arguments: ArgParser used to build the name of the exported figure (deprecated)
     :param out_dir: Export directory
     :param mname: Model name used in file name
     """
@@ -151,8 +151,7 @@ def plot_samplewise_misclassification_rates(m, n_display, labels, arguments, out
     misc_rates = {}
     if type(m) in [models.Baselines, ]:
         misc_rates = {str(k): round(v[0] / v[1], 3) if v[1] > 0 else 0 for k, v in m.preddict.items()}
-    elif type(m[0]) == torch.nn.Module:
-        misc_rates = {}  # TODO: implement sample-wise misclassification for PyTorch
+
     misc_rates = pd.DataFrame(misc_rates.items(), columns=['id', 'misc']).sort_values('misc', ascending=False)
     misc_rates = misc_rates.loc[:][:n_display]  # often top ~20 perform poorly
     misc_rates.reset_index(drop=True, inplace=True)
