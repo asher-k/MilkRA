@@ -59,7 +59,7 @@ There are several avenues worth exploring in future studies, as well as several 
 + [x] Improving script exporting & logging clarities and directories.
 + [ ] Expanding all scripts for more than 4-classes.
 + [ ] Investigating angle measurement script and attempting to integrate it with our preprocessing.
-+ [ ] Update functions in plots with asserts & clean-up any remaining TODOs.
++ [x] Update functions in plots with asserts & clean-up any remaining TODOs.
 + [x] Investigate the necessity of the command-line arguments only_acc and importance.
 
 Further research can involve:

@@ -355,8 +355,8 @@ def classify_dl(args, X, y, out_dir):
             torch.save(model.state_dict(), f"{out_dir}models/model{index}_{seed}.pt")
 
     # Trans-seed plotting
-    misc_rates = {k: sum(v)/len(v) if len(v) > 0 else 0. for k, v in misc_rates.items()}  # Mean misclassification rates
-    plt.plot_samplewise_misclassification_rates(misc_rates, 20, y_data, arguments=None, out_dir=f"{out_dir}/figs/", mname="full_conv")
+    misc_rates = {str(k): sum(v)/len(v) if len(v) > 0 else 0. for k, v in misc_rates.items()}  # Mean misclassification rates
+    plt.plot_samplewise_misclassification_rates(misc_rates, 20, y_data, arguments=None, out_dir=f"{out_dir}", mname="full_conv")
 
     logging.info(f"Final results on {args.num_states} seeds: {performances}")
     if args.verbose:
