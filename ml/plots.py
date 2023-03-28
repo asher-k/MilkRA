@@ -24,6 +24,7 @@ plt.style.use("seaborn-pastel")
 def _aggregate_image(X, y, agg_type="mean"):
     """
     Computes a mean image from a set of samples.
+    REQUIRES data to be loaded as a time series (see starting code of DL experiment).
 
     :param X: Droplet data
     :param y: Droplet classes
@@ -86,6 +87,7 @@ def animate_pso_swarm(opt, out_dir):
 def plot_attention_by_class(model, data, n_layers, out_dir, fname):
     """
     Displays a line plot of the aggregated attention values assigned to each subdivision over each class.
+    REQUIRES data to be loaded for use in a ViT.
 
     :param model: ViT model
     :param data: Dataset of droplet samples
@@ -93,6 +95,7 @@ def plot_attention_by_class(model, data, n_layers, out_dir, fname):
     :param out_dir: Output directory
     :param fname: File name appended to output
     """
+
     attentions_by_class = {0: [], 1: [], 2: [], 3: []}
     for sample in data:
         _res, attn = model(torch.unsqueeze(sample[0], dim=0))
@@ -181,7 +184,7 @@ def plot_samplewise_misclassification_rates(m, n_display, labels, arguments, out
 
 def plot_confusion_matrix(cm, labels, out_dir, mname):
     """
-    Plots a confusion matrix aggregated over all experiments of a single model
+    Plots a confusion matrix aggregated over all experiments of a single model.
 
     :param cm: Pre-computed 2d confusion matrix
     :param labels: Iterable of string labels of data
@@ -200,6 +203,7 @@ def plot_confusion_matrix(cm, labels, out_dir, mname):
 def plot_mean_vs_mean(X, y, out_dir, agg_type=None):
     """
     Displays heatmaps of the 'average' sample of a class, and identifies major differences between classes.
+    REQUIRES data to be loaded as a time series (see starting code of DL experiment).
 
     :param X: Droplet data
     :param y: Droplet classes
@@ -244,6 +248,7 @@ def plot_sample_vs_mean(X, y, indices, out_dir, plot_type="one", datatype="proce
     """
     Displays heatmaps identifying differences between the "mean" image of a class and provided samples. Provides the
     option to compare a single sample between its labelled class and all classes.
+    REQUIRES data to be loaded as a time series (see starting code of DL experiment).
 
     :param X: Droplet data
     :param y: Droplet labels
@@ -335,6 +340,7 @@ def plot_embedding_visualization(X, y, out_dir, known_misclassified=None, method
     """
     Displays 2d data embeddings obtained via Dimensionality Reduction. Points are colored according to class and
     are labelled according to index within the dataset.
+    REQUIRES data to be transformed via PCA or another dimensionality reduction technique.
 
     :param X: Droplet data
     :param y: Droplet classes
@@ -443,6 +449,7 @@ def animate_convolution_by_epoch(data, f, t, out_dir, fname, **kwargs):
 def compute_class_activation_maps(model, img, y, out_dir, fname, device, display=False):
     """
     Displays and exports class activation maps for the provided image and model.
+    REQUIRES data to be loaded as a time series (see starting code of DL experiment).
 
     :param model: CNN model with a GAP layer to extract information required for CAMs
     :param img: Droplet data to produce a CAM of
@@ -485,6 +492,7 @@ def compute_class_activation_maps(model, img, y, out_dir, fname, device, display
 def compute_aggregated_cams(model, data, out_dir, aggr_func, fname, device, display=False):
     """
     Plots class-wise aggregated Class Activation Maps and saves them to the provided output directory.
+    REQUIRES data to be loaded as a time series (see starting code of DL experiment).
 
     :param model: PyTorch model capable of producing CAMs
     :param data: PyTorch Dataset
@@ -525,6 +533,7 @@ def compute_aggregated_cams(model, data, out_dir, aggr_func, fname, device, disp
 def plot_seed_aggregated_cams(cams, out_dir, aggr_func, fname):
     """
     Plots the aggregations of an iterable of CAM aggregations and saves to an output directory.
+    REQUIRES data to be loaded as a time series (see starting code of DL experiment).
 
     :param cams: Dict of aggregated CAMs
     :param out_dir: Output directory
