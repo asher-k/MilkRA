@@ -142,22 +142,21 @@ if __name__ == '__main__':
             else:
                 raise ValueError(f"Files already exist for experiment {args.name}! "
                                  f"Please re-run under a different name or enable overwriting via --overwrite.")
-
-        # logging initialization
-        fh = logging.FileHandler(logs_name, mode="w")
-        fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-        logging.getLogger().addHandler(fh)
-        logging.getLogger().setLevel(logging.INFO)
-        logging.getLogger('matplotlib.font_manager').disabled = True
         with open(f'{out_dir}args.txt', 'w') as f:
             json.dump(args.__dict__, f, indent=2)
         preconditions(args)  # check command-line arguments are valid
-        logging.getLogger().info("Starting Preprocessing...")
     else:  # Load from a provided model checkpoint
         args_dict = json.load(open(f"{out_dir}args.txt"))
         for key in args_dict.keys():
             if key != "load":  # Don't want to overwrite intended script mode
                 args.__dict__[key] = args_dict[key]
+    fh = logging.FileHandler(logs_name, mode="w")  # logging initialization
+    fh.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    logger = logging.getLogger("EXPR_LOG")
+    logger.addHandler(fh)
+    logger.setLevel(logging.INFO)
+    logging.getLogger('matplotlib.font_manager').disabled = True
+    logger.info("Starting Preprocessing...")
 
     # load & reformat datasets
     nprand.seed(args.seed)
@@ -171,18 +170,18 @@ if __name__ == '__main__':
                         )
 
     # delegate to experiment script
-    logging.info(f"Delegating: {args.experiment}, {args.model}")
+    logger.info(f"Delegating: {args.experiment}, {args.model}")
     if args.experiment == "classify:baseline":
-        exp.classify_baselines(args, data, labels, out_dir)
+        exp.classify_baselines(args, data, labels, out_dir, logger)
     elif args.experiment == "classify:ts":
-        exp.classify_ts(args, data, labels, out_dir)
+        exp.classify_ts(args, data, labels, out_dir, logger)
     elif args.experiment == "cluster":
-        exp.clustering(args, data, labels, out_dir)
+        exp.clustering(args, data, labels, out_dir, logger)
     elif args.experiment == "pca":
-        exp.pso(args, data, labels, out_dir)
+        exp.pso(args, data, labels, out_dir, logger)
     elif args.experiment == "classify:dl":
-        exp.classify_dl(args, data, labels, out_dir)
+        exp.classify_dl(args, data, labels, out_dir, logger)
     elif args.experiment == "classify:vit":
-        exp.classify_vit(args, data, labels, out_dir)
+        exp.classify_vit(args, data, labels, out_dir, logger)
     else:
         raise ValueError("Unable to delegate experiment type {exp}".format(exp=args.experiment))
