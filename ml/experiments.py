@@ -185,7 +185,21 @@ def pso(args, X, y, out_dir):
     :param y: Droplet classes
     :param out_dir: Sub-directory to save any produced files in
     """
+    def prop_to_bin(x):
+        segment_size = X.shape[2] // len(x)
+        bin_x = []
+        for prop in x:
+            segment = list(np.zeros(segment_size, dtype=int))
+            if prop != 0.0:
+                interval = int(segment_size / max(int(segment_size*prop), 1))
+                n_selected = len(segment[0::interval])
+                segment[0::interval] = list(np.ones(n_selected, dtype=int))
+            bin_x += segment  # add the segment to the full binary feature array
+        return np.array(bin_x)
+
     def pca_reshape(x, f, flatten=True):
+        if len(f) != X.shape[2]:  # Accounts for proportion-based selection in place of binary
+            f = prop_to_bin(f)
         x_selected = np.array([a[:, f == 1] for a in x])
         shape = x_selected.shape
         if flatten:
@@ -214,24 +228,32 @@ def pso(args, X, y, out_dir):
         return np.array(losses)
 
     if not args.load:
-        n_particles, n_dims = X.shape[2]**2//args.pso_prop, X.shape[2]
-        assert args.pso_initsize < n_dims
-        init_ps = None
-        if args.pso_initscheme == 'deterministic':
-            init_ps = np.zeros(shape=(n_particles, n_dims))
-            for particle in init_ps:
-                inds = nprand.choice(list(range(0, n_dims-1)), size=args.pso_initsize)
-                particle[inds] = 1
-        else:
-            init_ps = nprand.choice([0,1], size=(n_particles, n_dims),
-                                     p=[1.-(args.pso_initsize/n_dims), args.pso_initsize/n_dims])
-            for particle in init_ps:  # verify we never have an "empty" particle
-                if not any(particle):
-                    particle[nprand.choice(list(range(0, n_dims)))] = 1
+        if args.pso_type == 'binary':
+            n_particles, n_dims = X.shape[2]**2//args.pso_prop, X.shape[2]
+            assert args.pso_initsize < n_dims
+            init_ps = None
+            if args.pso_initscheme == 'deterministic':
+                init_ps = np.zeros(shape=(n_particles, n_dims))
+                for particle in init_ps:
+                    inds = nprand.choice(list(range(0, n_dims-1)), size=args.pso_initsize)
+                    particle[inds] = 1
+            else:
+                init_ps = nprand.choice([0,1], size=(n_particles, n_dims),
+                                         p=[1.-(args.pso_initsize/n_dims), args.pso_initsize/n_dims])
+                for particle in init_ps:  # verify we never have an "empty" particle
+                    if not any(particle):
+                        particle[nprand.choice(list(range(0, n_dims)))] = 1
 
-        settings = {'c1': 2.5, 'c2': 0.5, 'w': 0.2, 'k': 20, 'p': 2}  # cognitive, social, inertia, n neighbours, distance metric
-        optimizer = ps.discrete.BinaryPSO(n_particles=n_particles, dimensions=n_dims, options=settings, init_pos=init_ps)
-        cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
+            settings = {'c1': 2.5, 'c2': 0.5, 'w': 0.2, 'k': 20, 'p': 2}  # cognitive, social, inertia, n neighbours, distance metric
+            optimizer = ps.discrete.BinaryPSO(n_particles=n_particles, dimensions=n_dims, options=settings, init_pos=init_ps)
+            cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
+
+        elif args.pso_type == 'proportional':
+            n_particles, n_segments = X.shape[2]**2//args.pso_prop, 10
+            settings = {'c1': 0.5, 'c2': 0.3, 'w':0.9}
+            optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments, options=settings, bounds=(np.zeros(n_segments), np.ones(n_segments)))
+            cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
+            logging.info(f"Final feature proportions: {pos}")
 
         out_name = f"{args.name}_features.npy"
         np.save(f"{out_dir}results/{out_name}", pos)
@@ -244,6 +266,9 @@ def pso(args, X, y, out_dir):
         x_selected, _ = run_pca(x_selected, y, args.seed, out_dir=out_dir, verbose=True)  # show PCA space
         logging.info(f"Final Inverse Silhouette: {1 / silhouette_score(x_selected, y)}")
         plt.animate_pso_swarm(optimizer, out_dir)  # show PSO animation (may or may not function...)
+
+
+
 
 
 def classify_dl(args, X, y, out_dir):

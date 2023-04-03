@@ -42,7 +42,7 @@ def define_arguments():
     # Model arguments
     a.add_argument('--experiment', default='classify:baseline', type=str, choices=["classify:baseline", "classify:dl",
                                                                                    "classify:ts", "classify:vit",
-                                                                                   "cluster", "pca"],
+                                                                                   "cluster", "pso"],
                    help='Experiment to perform; assumes the model chosen is relevant for it')
     a.add_argument('--model', default='logreg', type=str,
                    help='ML baseline to obtain results on; can be \'all\' to sequentially run all baselines.')
@@ -61,10 +61,12 @@ def define_arguments():
                         '(possible_points **2) / pso_prop')
     a.add_argument('--pso_initsize', default=100, type=int,
                    help='(approx.) Number of features to randomly initialize in a particle.')
+    a.add_argument('--pso_type', default='binary', type=str, choices=["binary", "proportional"],
+                   help='(approx.) Number of features to randomly initialize in a particle.')
     a.add_argument('--pso_initscheme', default='stochastic', type=str, choices=["stochastic", "deterministic"],
                    help='If stochastic, particles are initialized by probability, leading to variance between the number'
                         'of chosen timesteps. If deterministic, all particles will have pso_initsize timesteps intially.')
-    a.add_argument('--pso_iters', default=50, type=int,
+    a.add_argument('--pso_iters', default=20, type=int,
                    help='Number of training iterations to perform')
 
     # PyTorch Deep Learning arguments
@@ -167,7 +169,7 @@ if __name__ == '__main__':
                         ranges=args.load_ranges,
                         features=args.features_at,
                         normalize=args.normalize,
-                        ts=any([True if d in args.experiment else False for d in ["ts", "dl", "vit", "pca"]])  # is TS?
+                        ts=any([True if d in args.experiment else False for d in ["ts", "dl", "vit", "pso"]])  # is TS?
                         )
 
     # delegate to experiment script
@@ -178,7 +180,7 @@ if __name__ == '__main__':
         exp.classify_ts(args, data, labels, out_dir)
     elif args.experiment == "cluster":
         exp.clustering(args, data, labels, out_dir)
-    elif args.experiment == "pca":
+    elif args.experiment == "pso":
         exp.pso(args, data, labels, out_dir)
     elif args.experiment == "classify:dl":
         exp.classify_dl(args, data, labels, out_dir)
