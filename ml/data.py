@@ -117,7 +117,7 @@ class SubdivTransform(object):
         return sample
 
 
-def run_pca(X, y, seed, out_dir, num_components=2, verbose=False):
+def run_pca(X, y, seed, out_dir, num_components=2, verbose=False, fname=""):
     """
     Performs PCA on the provided data and labels and displays a plot of the transformed points.
 
@@ -127,6 +127,7 @@ def run_pca(X, y, seed, out_dir, num_components=2, verbose=False):
     :param out_dir: Output directory for embedding visualization
     :param num_components: Number of principle components to consider; anything 10 > x > 2 performs well, with 5 being +
     :param verbose: Enables the display of a plot of the embedding (requires n_components = 2)
+    :param fname: Substringh appended as a file name
 
     :return: Transformed X data, auxiliary verbosity output
     """
@@ -136,7 +137,7 @@ def run_pca(X, y, seed, out_dir, num_components=2, verbose=False):
     X = pd.DataFrame(pca.fit_transform(dstd, y))
     if verbose:
         logging.info(f"PCA explained variance: {pca.explained_variance_ratio_}")
-        plots.plot_embedding_visualization(X, y, out_dir, method="PCA")
+        plots.plot_embedding_visualization(X, y, out_dir, method=f"PCA_{fname}")
     return X, pca.explained_variance_ratio_
 
 

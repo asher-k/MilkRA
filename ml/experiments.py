@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import numpy.random as nprand
 import pyswarms as ps
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, accuracy_score
 
 import plots as plt
 from torch.utils.data import random_split
@@ -185,16 +185,22 @@ def pso(args, X, y, out_dir):
     :param y: Droplet classes
     :param out_dir: Sub-directory to save any produced files in
     """
-    def prop_to_bin(x):
+    def prop_to_bin(x, mutual_info=args.pso_type == "proportional"):
         segment_size = X.shape[2] // len(x)
         bin_x = []
-        for prop in x:
-            segment = list(np.zeros(segment_size, dtype=int))
-            if prop != 0.0:
-                interval = int(segment_size / max(int(segment_size*prop), 1))
-                n_selected = len(segment[0::interval])
-                segment[0::interval] = list(np.ones(n_selected, dtype=int))
-            bin_x += segment  # add the segment to the full binary feature array
+        if not mutual_info:  # Use denominator step-based approach
+            for prop in x:
+                segment = list(np.zeros(segment_size, dtype=int))
+                if prop != 0.0:
+                    interval = int(segment_size / max(int(segment_size*prop), 1))
+                    n_selected = len(segment[0::interval])
+                    segment[0::interval] = list(np.ones(n_selected, dtype=int))
+                bin_x += segment  # add the segment to the full binary feature array
+        else:   # MI-based approach
+            for prop, segment in zip(x, [ami[n*segment_size:(n+1)*segment_size] for n in range(0, len(ami))]):
+                min_mi = list(reversed(sorted(segment)))[int(prop*segment_size)]
+                segment = [1 if mi > min_mi else 0 for mi in segment]
+                bin_x += segment
         return np.array(bin_x)
 
     def pca_reshape(x, f, flatten=True):
@@ -206,7 +212,7 @@ def pso(args, X, y, out_dir):
             x_selected = x_selected.reshape((shape[0], shape[1] * shape[2]))
         return x_selected
 
-    def pcac_loss(f):
+    def pcac_loss(f, use_ensemble=True):
         """
         PCA-Clustering loss function.
 
@@ -214,61 +220,77 @@ def pso(args, X, y, out_dir):
         :return: Loss term
         """
         x_selected = pca_reshape(X, f)
-        x_selected, score = run_pca(x_selected, y, args.seed, out_dir=out_dir)
-        unaccounted_var = 1 - sum(score)  # PCA error
+        if use_ensemble:
+            from sklearn.ensemble import RandomForestClassifier
+            m = RandomForestClassifier(100, max_depth=2)
+            m.fit(x_selected, y)
+            preds = m.predict(x_selected)
+            return 1-accuracy_score(preds, y)
+        else:  # PCA-Clustering loss
+            x_selected, score = run_pca(x_selected, y, args.seed, out_dir=out_dir)
+            unaccounted_var = 1 - sum(score)  # PCA error
 
-        inverse_silhouette = silhouette_score(x_selected, y)
-        inverse_silhouette = 1 / inverse_silhouette  # == 1 means defined clusers, > 1 means silhouette -> 0 & less def.
-        if args.verbose:
-            logging.info(f"PCA loss: {unaccounted_var}, Silhouette: {inverse_silhouette}")
-        return unaccounted_var + inverse_silhouette
+            inverse_silhouette = silhouette_score(x_selected, y)
+            inverse_silhouette = 1 / inverse_silhouette  # == 1 means defined clusers, > 1 means silhouette -> 0 & less def.
+            if args.verbose:
+                logging.info(f"PCA loss: {unaccounted_var}, Silhouette: {inverse_silhouette}")
+            return unaccounted_var + inverse_silhouette
 
     def batch_loss(fs):
         losses = [pcac_loss(f) for f in fs]
         return np.array(losses)
 
-    if not args.load:
-        if args.pso_type == 'binary':
-            n_particles, n_dims = X.shape[2]**2//args.pso_prop, X.shape[2]
-            assert args.pso_initsize < n_dims
-            init_ps = None
-            if args.pso_initscheme == 'deterministic':
-                init_ps = np.zeros(shape=(n_particles, n_dims))
-                for particle in init_ps:
-                    inds = nprand.choice(list(range(0, n_dims-1)), size=args.pso_initsize)
-                    particle[inds] = 1
-            else:
-                init_ps = nprand.choice([0,1], size=(n_particles, n_dims),
-                                         p=[1.-(args.pso_initsize/n_dims), args.pso_initsize/n_dims])
-                for particle in init_ps:  # verify we never have an "empty" particle
-                    if not any(particle):
-                        particle[nprand.choice(list(range(0, n_dims)))] = 1
+    aggr_proportions = []
+    for seed in nprand.randint(0, 10000000, size=args.num_states):
+        nprand.seed(seed)
+        if not args.load:  # only implemented direct experiments for now, no loading/re-testing
+            if args.pso_type == 'binary':
+                n_particles, n_dims = X.shape[2]**2//args.pso_prop, X.shape[2]
+                assert args.pso_initsize < n_dims
+                init_ps = None
+                if args.pso_initscheme == 'deterministic':
+                    init_ps = np.zeros(shape=(n_particles, n_dims))
+                    for particle in init_ps:
+                        inds = nprand.choice(list(range(0, n_dims-1)), size=args.pso_initsize)
+                        particle[inds] = 1
+                else:
+                    init_ps = nprand.choice([0,1], size=(n_particles, n_dims),
+                                             p=[1.-(args.pso_initsize/n_dims), args.pso_initsize/n_dims])
+                    for particle in init_ps:  # verify we never have an "empty" particle
+                        if not any(particle):
+                            particle[nprand.choice(list(range(0, n_dims)))] = 1
 
-            settings = {'c1': 2.5, 'c2': 0.5, 'w': 0.2, 'k': 20, 'p': 2}  # cognitive, social, inertia, n neighbours, distance metric
-            optimizer = ps.discrete.BinaryPSO(n_particles=n_particles, dimensions=n_dims, options=settings, init_pos=init_ps)
-            cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
+                settings = {'c1': 2.5, 'c2': 0.5, 'w': 0.2, 'k': 20, 'p': 2}  # cognitive, social, inertia, n neighbours, distance metric
+                optimizer = ps.discrete.BinaryPSO(n_particles=n_particles, dimensions=n_dims, options=settings, init_pos=init_ps)
+                cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
 
-        elif args.pso_type == 'proportional':
-            n_particles, n_segments = X.shape[2]**2//args.pso_prop, 10
-            settings = {'c1': 0.5, 'c2': 0.3, 'w':0.9}
-            optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments, options=settings, bounds=(np.zeros(n_segments), np.ones(n_segments)))
-            cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
-            logging.info(f"Final feature proportions: {pos}")
+            elif args.pso_type == 'proportional':
+                # First compute MIs of each timestep (by aggregating over each subset of features)
+                X_flat = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
+                ami = mutual_info_classif(X_flat, y)
+                ami = np.mean(ami.reshape((-1, X.shape[2])), axis=0)
 
-        out_name = f"{args.name}_features.npy"
-        np.save(f"{out_dir}results/{out_name}", pos)
-        logging.info(f"Exported feature array to {out_name}")
+                n_particles, n_segments = 150, 10
+                settings = {'c1': 0.5, 'c2': 0.3, 'w':0.9}
+                optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments, options=settings, bounds=(np.zeros(n_segments), np.ones(n_segments)))
+                cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
+                aggr_proportions.append(pos)
 
-        # Display final plots & PCA
-        x_selected = pca_reshape(X, pos, flatten=False)
-        plt.plot_sample_vs_mean(x_selected, y, [0, 15, 40, 55], out_dir)  # show example images
-        x_selected = pca_reshape(X, pos, flatten=True)
-        x_selected, _ = run_pca(x_selected, y, args.seed, out_dir=out_dir, verbose=True)  # show PCA space
-        logging.info(f"Final Inverse Silhouette: {1 / silhouette_score(x_selected, y)}")
-        plt.animate_pso_swarm(optimizer, out_dir)  # show PSO animation (may or may not function...)
+            pos = prop_to_bin(pos)  # convert from proportions to binary
+            out_name = f"{args.name}_{seed}_features.npy"
+            np.save(f"{out_dir}results/{out_name}", pos)
+            logging.info(f"Exported feature array to {out_name}")
+            logging.info(f"Feature array: {pos}")
 
+            # Display final plots & PCA
+            x_selected = pca_reshape(X, pos, flatten=False)
+            plt.plot_sample_vs_mean(x_selected, y, [0, 15, 40, 55], out_dir)  # show example images
+            x_selected = pca_reshape(X, pos, flatten=True)
+            x_selected, _ = run_pca(x_selected, y, args.seed, out_dir=out_dir, verbose=True, fname=seed)  # show PCA
+            logging.info(f"Final Inverse Silhouette: {1 / silhouette_score(x_selected, y)}")
 
-
+    if len(aggr_proportions) > 0:
+        logging.info(f"Aggregated Proportions: {np.mean(aggr_proportions, axis=0)}")  # display aggregated proportions
 
 
 def classify_dl(args, X, y, out_dir):
