@@ -141,7 +141,7 @@ def plot_samplewise_misclassification_rates(m, n_display, labels, arguments, out
     """
     Displays a horizontal bar chart displaying misclassification rates and classes of samples.
 
-    :param m: Trained Baselines instance, with some results stored in preddict OR raw results (from DL experiment)
+    :param m: Trained Baselines instance, with some results stored in preddict OR iterable of trained PyTorch models
     :param n_display: Number of samples to display in the plot
     :param labels: Set of data labels
     :param arguments: ArgParser used to build the name of the exported figure (deprecated)
