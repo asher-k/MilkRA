@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import numpy.random as nprand
 import pyswarms as ps
-from sklearn.metrics import silhouette_score, accuracy_score
+from sklearn.metrics import silhouette_score
 
 import plots as plt
 from torch.utils.data import random_split
@@ -22,7 +22,7 @@ from sklearn.model_selection import train_test_split
 from data import format_name, _col_order, run_pca, run_umap, DropletDataset, ToTensor, FloatTransform, SubdivTransform
 
 
-def classify_baselines(args, X, y, out_dir):
+def classify_baselines(args, X, y, out_dir, logger):
     """
     Classification experiment on baseline non-time series models
 
@@ -30,6 +30,7 @@ def classify_baselines(args, X, y, out_dir):
     :param X: Droplet data
     :param y: Droplet classes
     :param out_dir: Subdirectory to export logs & generate files to
+    :param logger: Preconfigured logger logger
     """
     baselines = Baselines()
 
@@ -59,7 +60,8 @@ def classify_baselines(args, X, y, out_dir):
             elif args.features_selection == "umap":
                 state_data = run_umap(state_data, y, state, out_dir=f"{out_dir}figs/", verbose=True)
 
-            train_d, test_d, train_l, test_l = train_test_split(state_data, y, test_size=0.3, stratify=y, random_state=state)
+            train_d, test_d, train_l, test_l = train_test_split(state_data, y, test_size=0.3, stratify=y,
+                                                                random_state=state)
             baselines.data(train_d, train_l, test_d, test_l)
             result, c, _imp, _split = model(random_state=state,
                                             verbose=False,  # args.verbose
@@ -75,11 +77,13 @@ def classify_baselines(args, X, y, out_dir):
         stddevs = results.std()  # light post-run averaging
         results = results.mean(axis=0).round(decimals=3)
         for col, val in stddevs.items():  # reformatting stddev column names
-            results[col+"+-"] = val
+            results[col + "+-"] = val
         results = results.to_frame().transpose()
         results = results.reindex(sorted(results.columns), axis=1)
-        logging.info(msg="\nPerformance Statistics: {mod}\n{res}\n".format(mod=model_name, res=str(results)))
+        logger.info(msg="\nPerformance Statistics: {mod}\n{res}\n".format(mod=model_name, res=str(results)))
 
+        plt.plot_samplewise_misclassification_rates(baselines, 20, y, arguments=None, out_dir=f"{out_dir}",
+                                                    mname="mlp_baseline")
         # save performance results to csv file(s) with any produced plots
         if args.save:
             # Export CSVs to sub-directory
@@ -113,7 +117,7 @@ def classify_baselines(args, X, y, out_dir):
                     dt_splits.to_csv(imp_name)  # need to update save dir...
 
 
-def classify_ts(args, X, y, out_dir):
+def classify_ts(args, X, y, out_dir, logger):
     """
     Classification experiment with Time-series models.
 
@@ -121,6 +125,7 @@ def classify_ts(args, X, y, out_dir):
     :param X: Droplet data
     :param y: Droplet classes
     :param out_dir: Sub-directory to save any produced files in
+    :param logger: Preconfigured logger logger
     """
     models = TSBaselines()
     nprand.seed(args.seed)
@@ -129,7 +134,7 @@ def classify_ts(args, X, y, out_dir):
         for i, s in enumerate(nprand.randint(0, 999999999, size=args.num_states)):
             model_name = f"{i}_{s}"
             nprand.seed(s)
-            logging.info(f"Beginning {args.model} model {model_name}")
+            logger.info(f"Beginning {args.model} model {model_name}")
 
             X_copy = X.copy()
             train_d, test_d, train_l, test_l = train_test_split(X_copy, y, test_size=args.pyt_data_split[1], stratify=y)
@@ -146,7 +151,7 @@ def classify_ts(args, X, y, out_dir):
             results[col + "+-"] = val
         results = results.to_frame().transpose()
         results = results.reindex(sorted(results.columns), axis=1)
-        logging.info(results)
+        logger.info(results)
 
         # Export results to sub-directory
         results_dir = f"{out_dir}results/"
@@ -157,7 +162,7 @@ def classify_ts(args, X, y, out_dir):
             plt.plot_confusion_matrix(cm, y, out_dir, mname=args.name)
 
 
-def clustering(args, X, y, out_dir):
+def clustering(args, X, y, out_dir, logger):
     """
     Clustering experiment on our PCA'd data.
 
@@ -165,6 +170,7 @@ def clustering(args, X, y, out_dir):
     :param X: Droplet data
     :param y: Droplet classes
     :param out_dir: Sub-directory to save any produced files in
+    :param logger: Preconfigured logger logger
     """
     clusters = Clustering()
     if args.features_selection == "pca":  # PCA can be deterministic under randomizer solver; may occur in BD
@@ -176,7 +182,7 @@ def clustering(args, X, y, out_dir):
     clusters.plot_dendrogram(model, out_dir)
 
 
-def pso(args, X, y, out_dir):
+def pso(args, X, y, out_dir, logger):
     """
     PSO-driven timestep selection tuning via PCA.
 
@@ -184,35 +190,17 @@ def pso(args, X, y, out_dir):
     :param X: Droplet data
     :param y: Droplet classes
     :param out_dir: Sub-directory to save any produced files in
+    :param logger: Preconfigured logger logger
     """
-    def prop_to_bin(x, mutual_info=args.pso_type == "proportional"):
-        segment_size = X.shape[2] // len(x)
-        bin_x = []
-        if not mutual_info:  # Use denominator step-based approach
-            for prop in x:
-                segment = list(np.zeros(segment_size, dtype=int))
-                if prop != 0.0:
-                    interval = int(segment_size / max(int(segment_size*prop), 1))
-                    n_selected = len(segment[0::interval])
-                    segment[0::interval] = list(np.ones(n_selected, dtype=int))
-                bin_x += segment  # add the segment to the full binary feature array
-        else:   # MI-based approach
-            for prop, segment in zip(x, [ami[n*segment_size:(n+1)*segment_size] for n in range(0, len(ami))]):
-                min_mi = list(reversed(sorted(segment)))[int(prop*segment_size)]
-                segment = [1 if mi > min_mi else 0 for mi in segment]
-                bin_x += segment
-        return np.array(bin_x)
 
     def pca_reshape(x, f, flatten=True):
-        if len(f) != X.shape[2]:  # Accounts for proportion-based selection in place of binary
-            f = prop_to_bin(f)
         x_selected = np.array([a[:, f == 1] for a in x])
         shape = x_selected.shape
         if flatten:
             x_selected = x_selected.reshape((shape[0], shape[1] * shape[2]))
         return x_selected
 
-    def pcac_loss(f, use_ensemble=True):
+    def pcac_loss(f):
         """
         PCA-Clustering loss function.
 
@@ -220,87 +208,63 @@ def pso(args, X, y, out_dir):
         :return: Loss term
         """
         x_selected = pca_reshape(X, f)
-        if use_ensemble:
-            from sklearn.ensemble import RandomForestClassifier
-            m = RandomForestClassifier(100, max_depth=2)
-            m.fit(x_selected, y)
-            preds = m.predict(x_selected)
-            return 1-accuracy_score(preds, y)
-        else:  # PCA-Clustering loss
-            x_selected, score = run_pca(x_selected, y, args.seed, out_dir=out_dir)
-            unaccounted_var = 1 - sum(score)  # PCA error
+        x_selected, score = run_pca(x_selected, y, args.seed, out_dir=out_dir)
+        unaccounted_var = 1 - sum(score)  # PCA error
 
-            inverse_silhouette = silhouette_score(x_selected, y)
-            inverse_silhouette = 1 / inverse_silhouette  # == 1 means defined clusers, > 1 means silhouette -> 0 & less def.
-            if args.verbose:
-                logging.info(f"PCA loss: {unaccounted_var}, Silhouette: {inverse_silhouette}")
-            return unaccounted_var + inverse_silhouette
+        inverse_silhouette = silhouette_score(x_selected, y)
+        inverse_silhouette = 1 / inverse_silhouette  # == 1 means defined clusers, > 1 means silhouette -> 0 & less def.
+        if args.verbose:
+            logger.info(f"PCA loss: {unaccounted_var}, Silhouette: {inverse_silhouette}")
+        return unaccounted_var + inverse_silhouette
 
     def batch_loss(fs):
         losses = [pcac_loss(f) for f in fs]
         return np.array(losses)
 
-    aggr_proportions = []
-    for seed in nprand.randint(0, 10000000, size=args.num_states):
-        nprand.seed(seed)
-        if not args.load:  # only implemented direct experiments for now, no loading/re-testing
-            if args.pso_type == 'binary':
-                n_particles, n_dims = X.shape[2]**2//args.pso_prop, X.shape[2]
-                assert args.pso_initsize < n_dims
-                init_ps = None
-                if args.pso_initscheme == 'deterministic':
-                    init_ps = np.zeros(shape=(n_particles, n_dims))
-                    for particle in init_ps:
-                        inds = nprand.choice(list(range(0, n_dims-1)), size=args.pso_initsize)
-                        particle[inds] = 1
-                else:
-                    init_ps = nprand.choice([0,1], size=(n_particles, n_dims),
-                                             p=[1.-(args.pso_initsize/n_dims), args.pso_initsize/n_dims])
-                    for particle in init_ps:  # verify we never have an "empty" particle
-                        if not any(particle):
-                            particle[nprand.choice(list(range(0, n_dims)))] = 1
+    if not args.load:
+        n_particles, n_dims = X.shape[2] ** 2 // args.pso_prop, X.shape[2]
+        assert args.pso_initsize < n_dims
+        init_ps = None
+        if args.pso_initscheme == 'deterministic':
+            init_ps = np.zeros(shape=(n_particles, n_dims))
+            for particle in init_ps:
+                inds = nprand.choice(list(range(0, n_dims - 1)), size=args.pso_initsize)
+                particle[inds] = 1
+        else:
+            init_ps = nprand.choice([0, 1], size=(n_particles, n_dims),
+                                    p=[1. - (args.pso_initsize / n_dims), args.pso_initsize / n_dims])
+            for particle in init_ps:  # verify we never have an "empty" particle
+                if not any(particle):
+                    particle[nprand.choice(list(range(0, n_dims)))] = 1
 
-                settings = {'c1': 2.5, 'c2': 0.5, 'w': 0.2, 'k': 20, 'p': 2}  # cognitive, social, inertia, n neighbours, distance metric
-                optimizer = ps.discrete.BinaryPSO(n_particles=n_particles, dimensions=n_dims, options=settings, init_pos=init_ps)
-                cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
+        settings = {'c1': 2.5, 'c2': 0.5, 'w': 0.2, 'k': 20,
+                    'p': 2}  # cognitive, social, inertia, n neighbours, distance metric
+        optimizer = ps.discrete.BinaryPSO(n_particles=n_particles, dimensions=n_dims, options=settings,
+                                          init_pos=init_ps)
+        cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
 
-            elif args.pso_type == 'proportional':
-                # First compute MIs of each timestep (by aggregating over each subset of features)
-                X_flat = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
-                ami = mutual_info_classif(X_flat, y)
-                ami = np.mean(ami.reshape((-1, X.shape[2])), axis=0)
+        out_name = f"{args.name}_features.npy"
+        np.save(f"{out_dir}results/{out_name}", pos)
+        logger.info(f"Exported feature array to {out_name}")
 
-                n_particles, n_segments = 150, 10
-                settings = {'c1': 0.5, 'c2': 0.3, 'w':0.9}
-                optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments, options=settings, bounds=(np.zeros(n_segments), np.ones(n_segments)))
-                cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
-                aggr_proportions.append(pos)
-
-            pos = prop_to_bin(pos)  # convert from proportions to binary
-            out_name = f"{args.name}_{seed}_features.npy"
-            np.save(f"{out_dir}results/{out_name}", pos)
-            logging.info(f"Exported feature array to {out_name}")
-            logging.info(f"Feature array: {pos}")
-
-            # Display final plots & PCA
-            x_selected = pca_reshape(X, pos, flatten=False)
-            plt.plot_sample_vs_mean(x_selected, y, [0, 15, 40, 55], out_dir)  # show example images
-            x_selected = pca_reshape(X, pos, flatten=True)
-            x_selected, _ = run_pca(x_selected, y, args.seed, out_dir=out_dir, verbose=True, fname=seed)  # show PCA
-            logging.info(f"Final Inverse Silhouette: {1 / silhouette_score(x_selected, y)}")
-
-    if len(aggr_proportions) > 0:
-        logging.info(f"Aggregated Proportions: {np.mean(aggr_proportions, axis=0)}")  # display aggregated proportions
+        # Display final plots & PCA
+        x_selected = pca_reshape(X, pos, flatten=False)
+        plt.plot_sample_vs_mean(x_selected, y, [0, 15, 40, 55], out_dir)  # show example images
+        x_selected = pca_reshape(X, pos, flatten=True)
+        x_selected, _ = run_pca(x_selected, y, args.seed, out_dir=out_dir, verbose=True)  # show PCA space
+        logger.info(f"Final Inverse Silhouette: {1 / silhouette_score(x_selected, y)}")
+        plt.animate_pso_swarm(optimizer, out_dir)  # show PSO animation (may or may not function...)
 
 
-def classify_dl(args, X, y, out_dir):
+def classify_dl(args, X, y, out_dir, logger):
     """
-    Classification experiment with DL models.
+    Classification experiment with CNN model(s).
 
     :param args: Command-line ArgParser
     :param X: Droplet data
     :param y: Droplet classes
     :param out_dir: Sub-directory to save any produced files in
+    :param logger: Preconfigured logger logger
     """
     lr, bs, E, spl = args.pyt_lr, args.pyt_bs, args.pyt_epochs, args.pyt_data_split
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -323,7 +287,7 @@ def classify_dl(args, X, y, out_dir):
         seed = int(seed)
         nprand.seed(seed)
         torch.manual_seed(seed)
-        logging.critical(f"Set Seed {index+1}, {seed}")
+        logger.critical(f"Set Seed {index + 1}, {seed}")
         model_name = f"{index}_{seed}"
 
         # Initialize training & test DataLoaders
@@ -339,19 +303,20 @@ def classify_dl(args, X, y, out_dir):
         loss_fn = nn.NLLLoss()
         performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
         conevolution = {}  # convolution + evolution lol
-        logging.info(f"Model Size: {nets.count_params(model)}")
+        logger.info(f"Model Size: {nets.count_params(model)}")
 
         if not args.load:  # Training & validation
-            logging.critical(f"Beginning training on model {model_name}")
+            logger.critical(f"Beginning training on model {model_name}")
             for e in (bar := tqdm(range(0, E))):
                 performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log)
                 performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
                 t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
                 bar.set_description(f"t{t} v{v}")  # Update progress bar
                 if args.verbose:  # track convolutions for animation
-                    conevolution[e] = [np.copy(model.conv1.weight.cpu().detach().numpy())]  # First conv.; requires input_d 1
+                    conevolution[e] = [
+                        np.copy(model.conv1.weight.cpu().detach().numpy())]  # First conv.; requires input_d 1
         else:  # Load from checkpoint & obtain final performances
-            logging.critical(f"Loading model {model_name}...")
+            logger.critical(f"Loading model {model_name}...")
             try:
                 model.load_state_dict(torch.load(f"{out_dir}models/model{model_name}.pt"))
             except FileNotFoundError:
@@ -402,16 +367,19 @@ def classify_dl(args, X, y, out_dir):
             torch.save(model.state_dict(), f"{out_dir}models/model{index}_{seed}.pt")
 
     # Trans-seed plotting
-    misc_rates = {str(k): sum(v)/len(v) if len(v) > 0 else 0. for k, v in misc_rates.items()}  # Mean misclassification rates
-    plt.plot_samplewise_misclassification_rates(misc_rates, 20, y_data, arguments=None, out_dir=f"{out_dir}", mname="full_conv")
+    misc_rates = {str(k): sum(v) / len(v) if len(v) > 0 else 0. for k, v in
+                  misc_rates.items()}  # Mean misclassification rates
+    plt.plot_samplewise_misclassification_rates(misc_rates, 20, y_data, arguments=None, out_dir=f"{out_dir}",
+                                                mname="full_conv")
 
-    logging.info(f"Final results on {args.num_states} seeds: {performances}")
+    logger.info(f"Final results on {args.num_states} seeds: {performances}")
     if args.verbose:
         plt.plot_training_validation_performance(performances["train_acc"], performances["val_acc"], out_dir)
-        plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], out_dir, tr_size, val_size)
+        plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], out_dir, tr_size,
+                                             val_size)
 
 
-def classify_vit(args, X, y, out_dir):
+def classify_vit(args, X, y, out_dir, logger):
     """
     Vision Transformer classification experiment.
 
@@ -419,6 +387,7 @@ def classify_vit(args, X, y, out_dir):
     :param X: Droplet data
     :param y: Droplet classes
     :param out_dir: Sub-directory to save any produced files in
+    :param logger: Preconfigured logger logger
     """
     lr, bs, E, spl, subdiv_size = args.pyt_lr, args.pyt_bs, args.pyt_epochs, args.pyt_data_split, args.vit_subdiv_size
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -438,7 +407,7 @@ def classify_vit(args, X, y, out_dir):
         seed = int(seed)
         nprand.seed(seed)
         torch.manual_seed(seed)
-        logging.critical(f"Set Seed {index+1}, {seed}")
+        logger.critical(f"Set Seed {index + 1}, {seed}")
         model_name = f"{index}_{seed}"
 
         # Initialize training & test DataLoaders
@@ -452,25 +421,27 @@ def classify_vit(args, X, y, out_dir):
         sd, n_dims, n_heads, n_blocks, n_classes = (n_subdivs, subdiv_dims), args.vit_dims, args.vit_heads, \
                                                    args.vit_blocks, data.labels()[1]
         model = trans.ViT(sd=sd, n_dims=n_dims, n_heads=n_heads, n_blocks=n_blocks, n_classes=n_classes).to(device)
-        logging.critical(f"Model Size: {nets.count_params(model)}")
+        logger.critical(f"Model Size: {nets.count_params(model)}")
 
         optimizer = Adam(model.parameters(), lr=lr)
-        sr = lr_scheduler.StepLR(optimizer, step_size=E//10, gamma=0.95)
+        sr = lr_scheduler.StepLR(optimizer, step_size=E // 10, gamma=0.95)
         loss_fn = nn.NLLLoss()
         performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
 
         # Training & validation
         if not args.load:
             for e in (bar := tqdm(range(0, E))):
-                performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log, lrs=sr)
+                performance_log = _dl_train_epoch(model, trainLoader, device, loss_fn, optimizer, performance_log,
+                                                  lrs=sr)
                 performance_log = _dl_validate(model, testLoader, device, loss_fn, performance_log)
                 t, v = performance_log["train_acc"][e], performance_log["val_acc"][e]
                 bar.set_description(f"t{t} v{v}")  # Update progress bar
-            if performance_log["train_acc"][-1] < len(trainData)/2 and performance_log["val_acc"][-1] < len(testData)/2:
-                logging.critical(f"{model_name} failed. Discarding results.")
+            if performance_log["train_acc"][-1] < len(trainData) / 2 and performance_log["val_acc"][-1] < len(
+                    testData) / 2:
+                logger.critical(f"{model_name} failed. Discarding results.")
                 continue
         else:
-            logging.critical(f"Loading model {model_name}...")
+            logger.critical(f"Loading model {model_name}...")
             try:
                 model.load_state_dict(torch.load(f"{out_dir}models/model{model_name}.pt"))
             except FileNotFoundError:
@@ -501,9 +472,10 @@ def classify_vit(args, X, y, out_dir):
             torch.save(model.state_dict(), f"{out_dir}models/model{model_name}.pt")
 
     successes = len(models)
-    logging.info(f"Final results on {successes} successful seeds: {performances}")
+    logger.info(f"Final results on {successes} successful seeds: {performances}")
     if args.verbose:
-        plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], out_dir, tr_size, val_size)
+        plt.plot_training_validation_heatmap(performances["train_acc"], performances["val_acc"], out_dir, tr_size,
+                                             val_size)
 
 
 def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs=None):
@@ -516,7 +488,7 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
     :param loss_fn: Callable Loss Function; requires inputs in the form of (pred_label, act_label)
     :param opt: Model Optimizer
     :param log: Dict containing training/validation keys for tracking
-    :param verbose: Enables logging/plotting of the model
+    :param verbose: Enables logger/plotting of the model
     :param lrs: Learning rate scheduler (if being used)
 
     :return: Log updated with epoch statistics
@@ -534,7 +506,7 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
         loss.backward()  # backprop
         opt.step()  # update weights
 
-        # loss & accuracy logging
+        # loss & accuracy logger
         train_loss += loss
         train_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
     if lrs is not None:
