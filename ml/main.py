@@ -61,15 +61,19 @@ def define_arguments():
                         '(possible_points **2) / pso_prop')
     a.add_argument('--pso_initsize', default=100, type=int,
                    help='(approx.) Number of features to randomly initialize in a particle.')
-    a.add_argument('--pso_type', default='binary', type=str, choices=["binary", "proportional"],
+    a.add_argument('--pso_type', default='binary', type=str, choices=["binary", "proportional", "greedy"],
                    help='(approx.) Number of features to randomly initialize in a particle.')
+    a.add_argument('--pso_proportional_appr', default='None', type=str, choices=["None", "MI", "MRMR"],
+                   help='Approach for feature ordering under proportional pso_type.')
     a.add_argument('--pso_initscheme', default='stochastic', type=str, choices=["stochastic", "deterministic"],
                    help='If stochastic, particles are initialized by probability, leading to variance between the number'
                         'of chosen timesteps. If deterministic, all particles will have pso_initsize timesteps intially.')
-    a.add_argument('--pso_iters', default=20, type=int,
+    a.add_argument('--pso_iters', default=25, type=int,
                    help='Number of training iterations to perform')
 
     # PyTorch Deep Learning arguments
+    a.add_argument('--pyt_use_volumes', default=False, type=bool,
+                   help='When true, droplet volumes are loaded as a parameter in the final layer of the model')
     a.add_argument('--pyt_lr', default=1e-3, type=float,
                    help='Model Learning Rate')
     a.add_argument('--pyt_bs', default=6, type=int,
@@ -94,6 +98,8 @@ def define_arguments():
                    help='Concatenates flattened droplet data at the specified time steps')
     a.add_argument('--load_ranges', nargs="+", type=str,
                    help='String-formatted ranges representing indicies of steps to use in ML baselines')
+    a.add_argument('--load_timesteps_from_npy', type=str, default=None,
+                   help='When not empty, should be a local path to an .npy file produced during a PSO experiment run.')
     a.add_argument('--features_at', nargs="+", type=int,
                    help='Columns for dimensionality reduction; non-indexed columns are dropped prior to training')
     a.add_argument('--features_selection', default="none", choices=["none", "pca", "umap", "top"], type=str,
@@ -167,6 +173,7 @@ if __name__ == '__main__':
                         centre_avg=args.centre_avg,
                         at=args.load_at,
                         ranges=args.load_ranges,
+                        timesteps=args.load_timesteps_from_npy,
                         features=args.features_at,
                         normalize=args.normalize,
                         ts=any([True if d in args.experiment else False for d in ["ts", "dl", "vit", "pso"]])  # is TS?

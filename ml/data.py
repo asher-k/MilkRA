@@ -195,6 +195,7 @@ def load(data_dir, data_type, **kwargs):
     """
     x, y, norm_consts = [], [], []
     classes = sorted(os.listdir(data_dir))
+    volume = classes.pop()
     for c in classes:
         class_dir = "{d}/{c}".format(d=data_dir, c=c)
         seqs, index_cols = [], []
@@ -215,6 +216,10 @@ def load(data_dir, data_type, **kwargs):
         elif kwargs['ranges'] is not None:
             ranges = _parse_ranges(kwargs['ranges'])
             seqs = [i.iloc[ranges, :] for i in seqs]
+        elif kwargs['timesteps'] is not None:
+            Ts = np.load(kwargs['timesteps'])
+            Ts = np.where(Ts == 1)[0]
+            seqs = [i.iloc[Ts, :] for i in seqs]
         else:
             seqs = [i.iloc[:900, :] for i in seqs]
 
@@ -247,6 +252,16 @@ def load(data_dir, data_type, **kwargs):
         elif kwargs['normalize'] == "const":
             x = x.div(1000, axis=0)
         return x, y
+
+
+def load_volumes(path):
+    """
+    Loads the droplet volumes from a .csv file.
+
+    :param path: Path to the csv file
+    :return: Numpy array composed of the index and volume of a droplet
+    """
+    return np.load(path)
 
 
 def _col_order(data_type):

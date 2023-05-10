@@ -1,25 +1,29 @@
 import os
-
 import torch
 import logging
 import pandas as pd
 import numpy as np
 import numpy.random as nprand
 import pyswarms as ps
-from sklearn.metrics import silhouette_score, accuracy_score
-
+import nn as nets
+import transformer as trans
 import plots as plt
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 from torch.optim import Adam, lr_scheduler
 from torch import nn
 from tqdm import tqdm
-import nn as nets
-import transformer as trans
 from models import Baselines, Clustering, TSBaselines
 from sklearn.feature_selection import SelectPercentile, mutual_info_classif
 from sklearn.model_selection import train_test_split
-from data import format_name, _col_order, run_pca, run_umap, DropletDataset, ToTensor, FloatTransform, SubdivTransform
+from data import format_name, _col_order, run_pca, run_umap, DropletDataset, ToTensor, FloatTransform, SubdivTransform, load_volumes
+from sklearn.feature_selection import f_classif
+from sklearn.svm import SVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import silhouette_score, accuracy_score
+from sklearn.feature_selection import f_classif
+from warnings import simplefilter
 
 
 def classify_baselines(args, X, y, out_dir):
@@ -185,10 +189,17 @@ def pso(args, X, y, out_dir):
     :param y: Droplet classes
     :param out_dir: Sub-directory to save any produced files in
     """
-    def prop_to_bin(x, mutual_info=args.pso_type == "proportional"):
+    def prop_check(props, ind, seg_size):
+        # checks that we can still add it to the segment without going over the selected proportion of features
+        segment = ind // seg_size
+        prop_change = 1 / seg_size
+        props = np.array([p if i != segment else p-prop_change for i, p in enumerate(props)])
+        return props[segment] > 0, props
+
+    def prop_to_bin(x, appr=args.pso_proportional_appr):
         segment_size = X.shape[2] // len(x)
         bin_x = []
-        if not mutual_info:  # Use denominator step-based approach
+        if appr == 'None':  # Use denominator step-based approach
             for prop in x:
                 segment = list(np.zeros(segment_size, dtype=int))
                 if prop != 0.0:
@@ -196,11 +207,43 @@ def pso(args, X, y, out_dir):
                     n_selected = len(segment[0::interval])
                     segment[0::interval] = list(np.ones(n_selected, dtype=int))
                 bin_x += segment  # add the segment to the full binary feature array
-        else:   # MI-based approach
+        elif appr == 'MI':   # MI-based approach
             for prop, segment in zip(x, [ami[n*segment_size:(n+1)*segment_size] for n in range(0, len(ami))]):
                 min_mi = list(reversed(sorted(segment)))[int(prop*segment_size)]
                 segment = [1 if mi > min_mi else 0 for mi in segment]
                 bin_x += segment
+        else:       # MRMR-based approach
+            fpr = X.shape[1]  # features per row (needed for correct indexing of correlations)
+            ids = []          #  indices of selected timesteps
+            mrmrs = f_score.reshape((900 * 16)) * corr  # Computed MRMR scores for each feature/feature pair
+
+            # Add the first feature by recording its index in the sequence and removing it
+            next_ind = np.argmax(np.max(f_score, axis=1))
+            ids.append(next_ind)
+            x = prop_check(x, next_ind, segment_size)[1]  # Reduce the needed proportions
+            current_mrmrs = mrmrs[:][ids[-1]*fpr:(ids[-1]+1)*fpr].to_numpy()  # update the subsection we evaluate from
+            finished_segments = x < (1 / segment_size)  # sections which have reached 0% more proportion needed
+
+            # Loop; while there are still segments that require a value to add to
+            while any([v > 1/segment_size for v in x]):
+                summd_mrmrs = np.sum(current_mrmrs, axis=0)  # first sum over all features for total relevancy
+                summd_mrmrs = np.sum(np.reshape(summd_mrmrs, (900, 16)), axis=1)  # Then sum over again for timestep relevancy
+                np.put(summd_mrmrs, ids, 0)  # remove any timesteps we've already selected
+                summd_mrmrs = np.array([0 if c else a for a, c in zip(summd_mrmrs, np.repeat(finished_segments, segment_size))])
+                sortd_mrmrs = list(np.argsort(summd_mrmrs))
+
+                found = False
+                while not found:  # Loop; until we find a value in a valid segment
+                    next_ind = sortd_mrmrs.pop()  # Get index of the next best timestep
+                    found, props = prop_check(x, next_ind, segment_size)
+
+                ids.append(next_ind)
+                x = props  # Reduce the needed proportions
+                current_mrmrs = np.append(current_mrmrs, mrmrs[:][ids[-1] * fpr:(ids[-1] + 1) * fpr], axis=0)  # update the subsection we evaluate from
+                finished_segments = x < (1 / segment_size)
+            bin_x = np.zeros(900)
+            np.put(bin_x, ids, 1)
+            assert np.count_nonzero(bin_x) == len(ids)
         return np.array(bin_x)
 
     def pca_reshape(x, f, flatten=True):
@@ -212,6 +255,7 @@ def pso(args, X, y, out_dir):
             x_selected = x_selected.reshape((shape[0], shape[1] * shape[2]))
         return x_selected
 
+    simplefilter(action='ignore', category=FutureWarning)
     def pcac_loss(f, use_ensemble=True):
         """
         PCA-Clustering loss function.
@@ -220,12 +264,11 @@ def pso(args, X, y, out_dir):
         :return: Loss term
         """
         x_selected = pca_reshape(X, f)
-        if use_ensemble:
-            from sklearn.ensemble import RandomForestClassifier
-            m = RandomForestClassifier(100, max_depth=2)
+        if use_ensemble:  # Classifier-based loss
+            m = KNeighborsClassifier()
             m.fit(x_selected, y)
             preds = m.predict(x_selected)
-            return 1-accuracy_score(preds, y)
+            return (1-accuracy_score(preds, y)) + (0.00001 * (x_selected.shape[1] / X.shape[1]))
         else:  # PCA-Clustering loss
             x_selected, score = run_pca(x_selected, y, args.seed, out_dir=out_dir)
             unaccounted_var = 1 - sum(score)  # PCA error
@@ -265,27 +308,41 @@ def pso(args, X, y, out_dir):
                 cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
 
             elif args.pso_type == 'proportional':
-                # First compute MIs of each timestep (by aggregating over each subset of features)
+                if args.pso_proportional_appr == 'MI':
+                    X_flat = X.reshape((X.shape[0], X.shape[1] * X.shape[2]))
+                    ami = mutual_info_classif(X_flat, y)
+                    ami = np.mean(ami.reshape((-1, X.shape[2])), axis=0)
+                elif args.pso_proportional_appr == 'MRMR':
+                    # First compute f-scores of each timestep variable
+                    logging.info("Computing F-scores and feature correlations. This may take a sec...")
+                    X_flat = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
+                    f_score = f_classif(X_flat, y)[0].reshape(X.shape[2], X.shape[1])
+                    corr = 1-pd.DataFrame(X_flat).corr().abs().clip(1e-5)
+                else:
+                    raise ValueError(f"Unrecognized feature selection method for proportional pso: {args.pso_proportional_appr}.")
+
+                n_particles, n_segments = 50, 10
+                settings = {'c1': 0.5, 'c2': 0.3, 'w':0.9}
+                optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments, options=settings, bounds=(np.zeros(n_segments), np.ones(n_segments)*0.1))
+                cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
+                aggr_proportions.append(pos)
+
+            elif args.pso_type =='greedy':  # not actually PSO, just a greedy search
                 X_flat = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
                 ami = mutual_info_classif(X_flat, y)
                 ami = np.mean(ami.reshape((-1, X.shape[2])), axis=0)
-
-                n_particles, n_segments = 150, 10
-                settings = {'c1': 0.5, 'c2': 0.3, 'w':0.9}
-                optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments, options=settings, bounds=(np.zeros(n_segments), np.ones(n_segments)))
-                cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
-                aggr_proportions.append(pos)
+                
 
             pos = prop_to_bin(pos)  # convert from proportions to binary
             out_name = f"{args.name}_{seed}_features.npy"
             np.save(f"{out_dir}results/{out_name}", pos)
             logging.info(f"Exported feature array to {out_name}")
-            logging.info(f"Feature array: {pos}")
 
             # Display final plots & PCA
             x_selected = pca_reshape(X, pos, flatten=False)
             plt.plot_sample_vs_mean(x_selected, y, [0, 15, 40, 55], out_dir)  # show example images
             x_selected = pca_reshape(X, pos, flatten=True)
+            logging.info(f"# features: {(x_selected.shape[1] / X.shape[1])} MisCl:{cost-(0.00001 * (x_selected.shape[1] / X.shape[1]))}")
             x_selected, _ = run_pca(x_selected, y, args.seed, out_dir=out_dir, verbose=True, fname=seed)  # show PCA
             logging.info(f"Final Inverse Silhouette: {1 / silhouette_score(x_selected, y)}")
 
@@ -315,6 +372,7 @@ def classify_dl(args, X, y, out_dir):
         ToTensor(), FloatTransform(),
     ])
     misc_rates = {i: [] for _x, _y, i in data}  # Misclassification rates of test samples
+    volumes = load_volumes(f"{args.dir}/Volume.csv")
 
     tr_size, val_size = int(data.__len__() * spl[0]) + 1, int(data.__len__() * spl[1])
 
