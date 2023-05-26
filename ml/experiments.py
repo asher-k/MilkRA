@@ -283,7 +283,7 @@ def pso(args, X, y, out_dir):
         losses = [pcac_loss(f) for f in fs]
         return np.array(losses)
 
-    aggr_proportions = []
+    aggr_proportions, aggr_subsets = [], []
     for seed in nprand.randint(0, 10000000, size=args.num_states):
         nprand.seed(seed)
         if not args.load:  # only implemented direct experiments for now, no loading/re-testing
@@ -312,30 +312,44 @@ def pso(args, X, y, out_dir):
                     X_flat = X.reshape((X.shape[0], X.shape[1] * X.shape[2]))
                     ami = mutual_info_classif(X_flat, y)
                     ami = np.mean(ami.reshape((-1, X.shape[2])), axis=0)
+                    plt.plot_pso_scores_at_timesteps(ami, out_dir, "MI Score", "figs/MI_timesteps")
+
+                    n_particles, n_segments = 150, 10
+                    settings = {'c1': 0.5, 'c2': 0.3, 'w': 0.9}
+                    optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments,
+                                                        options=settings,
+                                                        bounds=(np.zeros(n_segments), np.ones(n_segments) * 0.2))
+                    cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
+                    aggr_proportions.append(pos)
+                    pos = prop_to_bin(pos)  # convert from proportions to binary
+                    aggr_subsets.append(pos)
                 elif args.pso_proportional_appr == 'MRMR':
                     # First compute f-scores of each timestep variable
                     logging.info("Computing F-scores and feature correlations. This may take a sec...")
                     X_flat = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
                     f_score = f_classif(X_flat, y)[0].reshape(X.shape[2], X.shape[1])
+                    plt.plot_pso_scores_at_timesteps(np.sum(f_score, axis=1), out_dir, "F Score", "figs/F_timesteps")
                     corr = 1-pd.DataFrame(X_flat).corr().abs().clip(1e-5)
+
+                    n_particles, n_segments = 50, 10
+                    settings = {'c1': 0.5, 'c2': 0.3, 'w': 0.9}
+                    optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments,
+                                                        options=settings,
+                                                        bounds=(np.zeros(n_segments), np.ones(n_segments) * 0.1))
+                    cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
+                    logging.info(pos)
+                    aggr_proportions.append(pos)
+                    pos = prop_to_bin(pos)  # convert from proportions to binary
+                    aggr_subsets.append(pos)
                 else:
                     raise ValueError(f"Unrecognized feature selection method for proportional pso: {args.pso_proportional_appr}.")
-
-                n_particles, n_segments = 50, 10
-                settings = {'c1': 0.5, 'c2': 0.3, 'w':0.9}
-                optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments, options=settings, bounds=(np.zeros(n_segments), np.ones(n_segments)*0.1))
-                cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
-                aggr_proportions.append(pos)
-
             elif args.pso_type =='greedy':  # not actually PSO, just a greedy search
                 X_flat = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
                 ami = mutual_info_classif(X_flat, y)
                 ami = np.mean(ami.reshape((-1, X.shape[2])), axis=0)
-                
 
-            pos = prop_to_bin(pos)  # convert from proportions to binary
             out_name = f"{args.name}_{seed}_features.npy"
-            np.save(f"{out_dir}results/{out_name}", pos)
+            np.save(f"{out_dir}results/{out_name}", pos)    
             logging.info(f"Exported feature array to {out_name}")
 
             # Display final plots & PCA
@@ -348,6 +362,8 @@ def pso(args, X, y, out_dir):
 
     if len(aggr_proportions) > 0:
         logging.info(f"Aggregated Proportions: {np.mean(aggr_proportions, axis=0)}")  # display aggregated proportions
+    if args.verbose:  # export features chosen to a figure for overview
+        plt.plot_pso_subset_counts(np.sum(aggr_subsets, 0), 24, f"{out_dir}figs/", f"{args.name}_top_feature_counts")
 
 
 def classify_dl(args, X, y, out_dir):
@@ -368,11 +384,15 @@ def classify_dl(args, X, y, out_dir):
     # Reformat data & define DataSet
     X_data = np.array([np.array([np.rot90(x, k=3)]) for x in X])  # rotate so we have (time, pos) for (H, W)
     y_data = np.array(y)
-    data = DropletDataset(X_data, y_data, list(range(0, len(y_data))), transforms=[
+    v_data = load_volumes(f"{args.dir}/Volume.csv").swapaxes(0, 1)  # load volume data from separate csv
+    v_data = v_data[:][1]  # trim the ids
+    if args.pyt_use_volumes:
+        logging.info("Using volumes as additional input parameter for final dense layer.")
+
+    data = DropletDataset(X_data, y_data, v_data, list(range(0, len(y_data))), transforms=[
         ToTensor(), FloatTransform(),
     ])
-    misc_rates = {i: [] for _x, _y, i in data}  # Misclassification rates of test samples
-    volumes = load_volumes(f"{args.dir}/Volume.csv")
+    misc_rates = {i: [] for _x, _y, i, _v in data}  # Misclassification rates of test samples
 
     tr_size, val_size = int(data.__len__() * spl[0]) + 1, int(data.__len__() * spl[1])
 
@@ -392,7 +412,7 @@ def classify_dl(args, X, y, out_dir):
 
         # Initialize model, optimizer and logs
         ks = 3 if args.type == "processed" else 5  # adaptive kernel size
-        model = nets.CMapNN(num_classes=data.labels()[1], kernel_size=ks).to(device)
+        model = nets.CMapNN(num_classes=data.labels()[1], kernel_size=ks, use_volume=args.pyt_use_volumes).to(device)
         optimizer = Adam(model.parameters(), lr=lr)
         loss_fn = nn.NLLLoss()
         performance_log = {"train_loss": [], "train_acc": [], "val_loss": [], "val_acc": []}
@@ -428,9 +448,9 @@ def classify_dl(args, X, y, out_dir):
         with torch.no_grad():
             model.eval()
             for sample in testLoader:
-                x, y, i = sample
+                x, y, i, _v = sample
                 x, y = x.to(device), y.to(device)
-                pred, _d = model(x)
+                pred, _d = model(x, _v)
                 pred = pred.argmax(1).cpu().detach().numpy()
                 for pc, ac, n in zip(pred, y, i):
                     misc_rates[n.item()].append(0 if pc == ac else 1)
@@ -446,13 +466,13 @@ def classify_dl(args, X, y, out_dir):
             if not args.load:  # Epoch Performances
                 plt.plot_epoch_performance(E, performance_log.keys(), ep_export_dir, f"{model_name}",
                                            *[i[1] for i in performance_log.items()])
-            for i, d in enumerate(data):  # Sample-wise CAMs
-                plt.compute_class_activation_maps(model, d[0], d[1], cam_export_dir, str(i), device, display=True)
-            for cam_metric in [np.mean, np.median, np.var]:  # Aggregated CAMs
-                if cam_metric not in cams:
-                    cams[cam_metric] = []
-                cams[cam_metric].append(plt.compute_aggregated_cams(model, data, cam_export_dir, cam_metric, str(seed),
-                                                                    device, display=True))
+                # for i, d in enumerate(data):  # Sample-wise CAMs
+                #     plt.compute_class_activation_maps(model, d[0], d[1], cam_export_dir, str(i), device, display=True)
+                # for cam_metric in [np.mean, np.median, np.var]:  # Aggregated CAMs
+                #     if cam_metric not in cams:
+                #         cams[cam_metric] = []
+                #     cams[cam_metric].append(plt.compute_aggregated_cams(model, data, cam_export_dir, cam_metric, str(seed),
+                #                                                         device, display=True))
             # conv_trend = [v[0] for k, v in conevolution.items()]  # Evolution of convolutional filters
             # plt.animate_convolution_by_epoch(conv_trend, f=5, t=E, out_dir=conv_export_dir, fname=f"_{model_name}",
             #                                  title=f"seed:{seed}")
@@ -583,10 +603,10 @@ def _dl_train_epoch(model, loader, device, loss_fn, opt, log, verbose=False, lrs
     train_loss, train_acc = 0, 0
 
     # loop over the training set
-    for (x, y, _) in loader:
-        (x, y) = (x.to(device), y.to(device))
+    for (x, y, _, v) in loader:
+        (x, y, v) = (x.to(device), y.to(device), v.to(device))
 
-        pred, _extra = model(x)
+        pred, _extra = model(x, v)
         loss = loss_fn(pred, y)
         opt.zero_grad()  # 0 the gradient
         loss.backward()  # backprop
@@ -623,9 +643,9 @@ def _dl_validate(model, loader, device, loss_fn, log, verbose=False, log_type="v
     val_loss, val_acc = 0, 0
     with torch.no_grad():
         model.eval()
-        for x, y, _ in loader:
-            x, y = (x.to(device), y.to(device))
-            pred, _extra = model(x)
+        for x, y, _, v in loader:
+            x, y, v = (x.to(device), y.to(device), v.to(device))
+            pred, _extra = model(x, v)
             val_loss += loss_fn(pred, y)
             val_acc += (pred.argmax(1) == y).type(torch.float).sum().item()
     log[f"{log_type}_loss"].append(val_loss.item())

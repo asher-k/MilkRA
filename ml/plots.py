@@ -182,6 +182,54 @@ def plot_samplewise_misclassification_rates(m, n_display, labels, arguments, out
     plt.savefig(fig_name)
 
 
+def plot_pso_subset_counts(counts, n_display, out_dir, mname):
+    """
+    Displays a horizontal bar chart of counts of features in pso subsets
+
+    :param counts: List of ints; each index represents the number of times the timestep occurred
+    :param n_display: Number of samples to display in the plot
+    :param out_dir: Export directory
+    :param mname: Model name used in file name
+    :return:
+    """
+    plt.clf()
+    counts = pd.DataFrame(np.swapaxes([list(range(0, 900)), counts], 0,1), columns=['id', 'count']).sort_values('count', ascending=False)
+    counts = counts.loc[:][:n_display]  # often top ~20 perform poorly
+    counts.reset_index(drop=True, inplace=True)
+    print(counts)
+
+    sns.set_context('paper')
+    sns.set_color_codes('pastel')
+    fig, ax = plt.subplots(figsize=(6, 15))
+    ax.barh(list(range(0, n_display)), counts["count"])
+    ax.set_yticks(list(range(0, n_display)), labels=counts["id"])
+    ax.invert_yaxis()  # labels read top-to-bottom
+    plt.xlabel("Cumulative count")
+    plt.ylabel("Feature Index")
+
+    fig_name = f"{out_dir}{mname}_misc_rates.png"
+    plt.savefig(fig_name)
+
+
+def plot_pso_scores_at_timesteps(scores, out_dir, mname, fname):
+    """
+    Displays a line chart showing scores from a PSO model for each timestep
+
+    :param scores: List of floats; each index represents the objective PSO function at the timestep
+    :param out_dir: Export directory
+    :param mname: File name used during export
+    :return:
+    """
+    plt.clf()
+
+    plt.plot(list(range(1, 901, 1)), scores)
+    plt.xlabel("Timestep")
+    plt.ylabel(f"{mname}")
+
+    fig_name = f"{out_dir}{fname}.png"
+    plt.savefig(fig_name)
+
+
 def plot_confusion_matrix(cm, labels, out_dir, mname):
     """
     Plots a confusion matrix aggregated over all experiments of a single model.

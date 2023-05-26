@@ -1,5 +1,5 @@
 import torch.nn as nn
-from torch import flatten, cat
+from torch import flatten, cat, float32, Tensor
 
 
 class CMapNN(nn.Module):
@@ -7,8 +7,10 @@ class CMapNN(nn.Module):
     Fully-convolutional NN with final dense layers replaced by Global Average Pooling; this enables the computation
     of Class Activation Maps (CAMs) and reduces the number of free parameters in the model.
     """
-    def __init__(self, num_classes, kernel_size, pad_mode='circular'):
+    def __init__(self, num_classes, kernel_size, pad_mode='circular', use_volume=False):
         super(CMapNN, self).__init__()
+        self.use_volume = use_volume
+
         # Conv block 1; output 16c
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=16, kernel_size=kernel_size, stride=1, padding_mode=pad_mode,
                                padding=1)
@@ -31,14 +33,16 @@ class CMapNN(nn.Module):
         self.mpool3 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # GAP, Dense & SM
-        self.d = nn.Linear(in_features=64, out_features=num_classes)
+        final_dense_size = 64
+        self.d = nn.Linear(in_features=final_dense_size if not use_volume else final_dense_size+1, out_features=num_classes)
         self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, x, early_stopping=False):
+    def forward(self, x, v, early_stopping=False):
         """
         Performs a forward pass of the model.
 
         :param x: Tensor data sample
+        :param v: Volume, Float. When non-None, it is appended as an additional
         :param early_stopping: Enables early stopping of the model after the final convolutional layer
         :return: Int predicted class, unused auxiliary parameter
         """
@@ -60,6 +64,12 @@ class CMapNN(nn.Module):
         if early_stopping:  # For direct extraction of convolved sample
             return x, None
         x = x.view(x.shape[0], 64, x.shape[2]*x.shape[3]).mean(2)  # GAP reshape to [BS, 64, IMG]
+        # Integrate volumes into the output
+        if self.use_volume:
+            v = v.to(x.get_device())
+            v = v.unsqueeze(1)
+            x = cat((x, v), 1).to(dtype=float32)
+        # Final dense & softmax
         x = self.d(x)
         predictions = self.softmax(x)
         return predictions, None

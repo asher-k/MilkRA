@@ -72,7 +72,7 @@ def define_arguments():
                    help='Number of training iterations to perform')
 
     # PyTorch Deep Learning arguments
-    a.add_argument('--pyt_use_volumes', default=False, type=bool,
+    a.add_argument('--pyt_use_volumes', default=False, action=BooleanOptionalAction,
                    help='When true, droplet volumes are loaded as a parameter in the final layer of the model')
     a.add_argument('--pyt_lr', default=1e-3, type=float,
                    help='Model Learning Rate')
