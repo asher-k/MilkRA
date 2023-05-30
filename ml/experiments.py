@@ -215,13 +215,13 @@ def pso(args, X, y, out_dir):
         else:       # MRMR-based approach
             fpr = X.shape[1]  # features per row (needed for correct indexing of correlations)
             ids = []          #  indices of selected timesteps
-            mrmrs = f_score.reshape((900 * 16)) * corr  # Computed MRMR scores for each feature/feature pair
+            mrmrs = np.nan_to_num(f_score.reshape((900 * 16)) * corr.to_numpy())  # Computed MRMR scores for each feature/feature pair
 
             # Add the first feature by recording its index in the sequence and removing it
             next_ind = np.argmax(np.max(f_score, axis=1))
             ids.append(next_ind)
             x = prop_check(x, next_ind, segment_size)[1]  # Reduce the needed proportions
-            current_mrmrs = mrmrs[:][ids[-1]*fpr:(ids[-1]+1)*fpr].to_numpy()  # update the subsection we evaluate from
+            current_mrmrs = mrmrs[:][ids[-1]*fpr:(ids[-1]+1)*fpr]  # update the subsection we evaluate from
             finished_segments = x < (1 / segment_size)  # sections which have reached 0% more proportion needed
 
             # Loop; while there are still segments that require a value to add to
@@ -343,27 +343,64 @@ def pso(args, X, y, out_dir):
                     aggr_subsets.append(pos)
                 else:
                     raise ValueError(f"Unrecognized feature selection method for proportional pso: {args.pso_proportional_appr}.")
-            elif args.pso_type =='greedy':  # not actually PSO, just a greedy search
+
+                # Display final plots & PCA
+                x_selected = pca_reshape(X, pos, flatten=False)
+                plt.plot_sample_vs_mean(x_selected, y, [0, 15, 40, 55], out_dir)  # show example images
+                x_selected = pca_reshape(X, pos, flatten=True)
+                logging.info(
+                    f"# features: {(x_selected.shape[1] / X.shape[1])} MisCl:{cost - (0.00001 * (x_selected.shape[1] / X.shape[1]))}")
+                x_selected, _ = run_pca(x_selected, y, args.seed, out_dir=out_dir, verbose=True, fname=seed)  # show PCA
+                logging.info(f"Final Inverse Silhouette: {1 / silhouette_score(x_selected, y)}")
+
+            elif args.pso_type =='greedy':
+                aggr_size = []
+                aggr_obj = []
+                # not actually PSO, just a greedy search using MRMR selection
+                # NOTE: for this you need to run --num_states 1 since we already enumerate each possible starting step.
+                fpr = X.shape[1]  # features per row
                 X_flat = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
-                ami = mutual_info_classif(X_flat, y)
-                ami = np.mean(ami.reshape((-1, X.shape[2])), axis=0)
+                f_score = f_classif(X_flat, y)[0].reshape(X.shape[2], X.shape[1])
+                corr = 1 - pd.DataFrame(X_flat).corr().abs().clip(1e-5)
+                mrmrs = np.nan_to_num(f_score.reshape((900 * 16)) * corr.to_numpy())
 
-            out_name = f"{args.name}_{seed}_features.npy"
-            np.save(f"{out_dir}results/{out_name}", pos)    
-            logging.info(f"Exported feature array to {out_name}")
+                end_criteria = [48, 0.05]  # End criteria for a single subset
+                for starting_step in list(range(0, 900)):  # enumerate all possible starting timesteps
+                    subset = [starting_step]  # start the current subset
+                    bin_subset = np.zeros(900)  # binary representation
+                    np.put(bin_subset, subset, 1)
+                    current_mrmrs = mrmrs[:][subset[-1] * fpr:(subset[-1] + 1) * fpr] # update the subsection we evaluate from
 
-            # Display final plots & PCA
-            x_selected = pca_reshape(X, pos, flatten=False)
-            plt.plot_sample_vs_mean(x_selected, y, [0, 15, 40, 55], out_dir)  # show example images
-            x_selected = pca_reshape(X, pos, flatten=True)
-            logging.info(f"# features: {(x_selected.shape[1] / X.shape[1])} MisCl:{cost-(0.00001 * (x_selected.shape[1] / X.shape[1]))}")
-            x_selected, _ = run_pca(x_selected, y, args.seed, out_dir=out_dir, verbose=True, fname=seed)  # show PCA
-            logging.info(f"Final Inverse Silhouette: {1 / silhouette_score(x_selected, y)}")
+                    while len(subset) < end_criteria[0] and pcac_loss(bin_subset) > end_criteria[1]:
+                        summd_mrmrs = np.sum(current_mrmrs, axis=0)
+                        summd_mrmrs = np.sum(np.reshape(summd_mrmrs, (900, 16)), axis=1)
+                        np.put(summd_mrmrs, subset, 0)  # remove any timesteps we've already selected
+                        sortd_mrmrs = list(np.argsort(summd_mrmrs))  # sort features by relevance
 
+                        subset.append(sortd_mrmrs.pop())  # update the subset
+                        current_mrmrs = np.append(current_mrmrs, mrmrs[:][subset[-1] * fpr:(subset[-1] + 1) * fpr], axis=0)
+                        bin_subset = np.zeros(900)  # update binary representation
+                        np.put(bin_subset, subset, 1)
+                    # Update tracking
+                    aggr_subsets.append(bin_subset)
+                    aggr_size.append(len(subset))
+                    aggr_obj.append(pcac_loss(bin_subset))
+                    # Log & export the subset
+                    logging.info(f"Objective on timestep {starting_step}: {aggr_obj[-1]}, {aggr_size[-1]}")
+                    out_name = f"{seed}_{starting_step}_features.npy"
+                    np.save(f"{out_dir}results/{out_name}", bin_subset)
+            else:
+                raise ValueError(f"Unrecognized PSO type: {args.pso_type}.")
+            if args.save:
+                out_name = f"{args.name}_{seed}_features.npy"
+                np.save(f"{out_dir}results/{out_name}", pos)
+                logging.info(f"Exported feature array to {out_name}")
     if len(aggr_proportions) > 0:
         logging.info(f"Aggregated Proportions: {np.mean(aggr_proportions, axis=0)}")  # display aggregated proportions
     if args.verbose:  # export features chosen to a figure for overview
         plt.plot_pso_subset_counts(np.sum(aggr_subsets, 0), 24, f"{out_dir}figs/", f"{args.name}_top_feature_counts")
+        if args.pso_type == 'greedy':
+            plt.plot_greedy_search_3d(list(range(0, 900)), aggr_obj, aggr_size, f"{out_dir}figs/", "greedy_performance")
 
 
 def classify_dl(args, X, y, out_dir):

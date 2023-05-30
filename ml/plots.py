@@ -190,7 +190,6 @@ def plot_pso_subset_counts(counts, n_display, out_dir, mname):
     :param n_display: Number of samples to display in the plot
     :param out_dir: Export directory
     :param mname: Model name used in file name
-    :return:
     """
     plt.clf()
     counts = pd.DataFrame(np.swapaxes([list(range(0, 900)), counts], 0,1), columns=['id', 'count']).sort_values('count', ascending=False)
@@ -211,6 +210,27 @@ def plot_pso_subset_counts(counts, n_display, out_dir, mname):
     plt.savefig(fig_name)
 
 
+def plot_greedy_search_3d(x, y, z, out_dir, mname):
+    """
+    Displays a 3d line plot showing the development of size vs performance at each timestep
+
+    :param x: X data
+    :param y: Y data
+    :param z: Z data
+    :param out_dir: Export directory
+    :param mname: Model name used in file name
+    """
+    plt.clf()
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot(x, y, zs=z)
+
+    # Export
+    fig_name = f"{out_dir}{mname}.png"
+    plt.savefig(fig_name)
+    plt.show()
+
+
 def plot_pso_scores_at_timesteps(scores, out_dir, mname, fname):
     """
     Displays a line chart showing scores from a PSO model for each timestep
@@ -218,7 +238,6 @@ def plot_pso_scores_at_timesteps(scores, out_dir, mname, fname):
     :param scores: List of floats; each index represents the objective PSO function at the timestep
     :param out_dir: Export directory
     :param mname: File name used during export
-    :return:
     """
     plt.clf()
 
