@@ -318,7 +318,7 @@ def pso(args, X, y, out_dir):
                     settings = {'c1': 0.5, 'c2': 0.3, 'w': 0.9}
                     optimizer = ps.single.GlobalBestPSO(n_particles=n_particles, dimensions=n_segments,
                                                         options=settings,
-                                                        bounds=(np.zeros(n_segments), np.ones(n_segments) * 0.2))
+                                                        bounds=(np.zeros(n_segments), np.ones(n_segments) * 0.1))
                     cost, pos = optimizer.optimize(batch_loss, iters=args.pso_iters)
                     aggr_proportions.append(pos)
                     pos = prop_to_bin(pos)  # convert from proportions to binary
@@ -327,8 +327,10 @@ def pso(args, X, y, out_dir):
                     # First compute f-scores of each timestep variable
                     logging.info("Computing F-scores and feature correlations. This may take a sec...")
                     X_flat = X.reshape((X.shape[0], X.shape[1]*X.shape[2]))
-                    f_score = f_classif(X_flat, y)[0].reshape(X.shape[2], X.shape[1])
-                    plt.plot_pso_scores_at_timesteps(np.sum(f_score, axis=1), out_dir, "F Score", "figs/F_timesteps")
+                    f_score = np.nan_to_num(f_classif(X_flat, y)[0].reshape(X.shape[2], X.shape[1]))
+                    var = np.nan_to_num(np.var(X_flat, axis=0)).reshape(X.shape[2], X.shape[1])
+                    plt.plot_pso_scores_at_timesteps(np.average(f_score, axis=1), out_dir, "F Score", "figs/F_timesteps")
+                    plt.plot_pso_scores_at_timesteps(np.average(var, axis=1), out_dir, "Mean Var", "figs/var_timesteps")
                     corr = 1-pd.DataFrame(X_flat).corr().abs().clip(1e-5)
 
                     n_particles, n_segments = 50, 10
