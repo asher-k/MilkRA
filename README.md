@@ -47,21 +47,7 @@ We make approach classification from several perspectives, including dimensional
 ## Visualizations
 We divide our approach to visualizations into two categories, _ad-hoc_ and _post-hoc_. _ad-hoc_ visualizations are produced at runtime from functions in `ml/plot.py` and provide context or results on a single experiment run. Our _post-hoc_ visuals found in `visuals/visuals.py` aggregate results over multiple runs or experiments and produce comparative figures.
 
-If you're looking for a visualization function, it's probably in `ml/plot.py` and is produced at runtime. _post-hoc_ visuals are only necessary when comparing hyperparameter settings on our baseline classification experiment.
-
-## Moving Forward
-There are several avenues worth exploring in future studies, as well as several current duties which should be finished prior to the concolusion of the contract. These include, though are not limited to:
-+ [x] Refactoring and documenting older code, specifically in `visuals/` and `preprocessing/`. 
-+ [x] Improving stability of scripts by addressing active issues.
-+ [x] Composing a short (<5 page) document providing instructions and commentary on running ML scripts.
-+ [ ] Developing a clean format for figures and re-running experiments to obtain them.
-+ [x] Implementing a method for batched model loading in experiments.
-+ [x] Improving script exporting & logging clarities and directories.
-+ [ ] Expanding all scripts for more than 4-classes.
-+ [ ] Investigating angle measurement script and attempting to integrate it with our preprocessing.
-+ [x] Update functions in plots with asserts & clean-up any remaining TODOs.
-+ [x] Investigate the necessity of the command-line arguments only_acc and importance.
-
+If you're looking for a visualization function, it's probably in `ml/plot.py` and is produced at runtime. _post-hoc_ visuals are only necessary when comparing hyperparameter settings on our baseline classification experiment. Plus `visuals/visuals.py` is very deprecated and a headache to work with.
 Further research can involve:
 + Producing Self-attention Attribution visualizations per [Hao et al](https://arxiv.org/abs/2004.11207)
 + Improving stability of our Transformers by applying Admin initialization scheme per [Liu et al](https://arxiv.org/abs/2004.08249)
